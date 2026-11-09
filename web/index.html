@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Pantry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    color-scheme:light;
+    --paper:#F6F4EE; --raised:#FFFFFF; --ink:#23241F; --soft:#5C5B52;
+    --rail:#2E3D34; --rail2:#3E5245;
+    --amber:#C97C1D; --amber-bg:#FBEFDC; --sage:#5C7F5F; --sage-bg:#E6EEE3;
+    --rust:#B34632; --rust-bg:#F7E4DE; --slate:#4A5C6B; --slate-bg:#E6ECEF;
+    --violet:#6B5B95; --violet-bg:#EAE5F2; --line:#DDD8CC; --r:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;min-height:100vh;}
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace;}
+  .display{font-family:'Archivo Black',Impact,sans-serif;}
+  .rail{background:var(--rail);color:#EFEDE4;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  .rail h1{font-family:'Archivo Black',Impact,sans-serif;font-size:19px;letter-spacing:.06em;text-transform:uppercase;margin:0;}
+  .who{font-size:12px;color:#C7D0C6;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .tabs{display:flex;gap:4px;background:var(--rail2);padding:6px 24px 0;overflow-x:auto;}
+  .tab{padding:10px 16px;font-size:13px;font-weight:600;color:#C7D0C6;cursor:pointer;border-radius:8px 8px 0 0;white-space:nowrap;user-select:none;}
+  .tab:hover{color:#fff;} .tab.active{background:var(--paper);color:var(--ink);}
+  main{max-width:1100px;margin:0 auto;padding:22px 18px 90px;}
+  input,select,button,textarea{font-family:inherit;font-size:14px;}
+  input,select,textarea{padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--raised);color:var(--ink);min-width:0;}
+  input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--rail2);outline-offset:2px;}
+  .btn{padding:10px 16px;border-radius:8px;border:1px solid transparent;cursor:pointer;font-weight:600;background:var(--rail);color:#fff;}
+  .btn:hover{background:var(--rail2);} .btn:disabled{opacity:.45;cursor:not-allowed;}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--soft);} .btn.ghost:hover{border-color:var(--soft);}
+  .btn.danger{background:transparent;border-color:var(--rust);color:var(--rust);} .btn.danger:hover{background:var(--rust-bg);}
+  .btn.prep{background:var(--violet);} .btn.prep:hover{background:#5A4B83;}
+  .btn.sm{padding:6px 10px;font-size:12px;border-radius:6px;}
+  .card{background:var(--raised);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;margin-bottom:14px;overflow-x:auto;}
+  .card h2{margin:0 0 4px;font-size:15px;} .card .sub{font-size:12px;color:var(--soft);margin:0 0 12px;}
+  .note{font-size:13px;color:var(--soft);background:var(--slate-bg);border-radius:8px;padding:10px 12px;line-height:1.5;margin-bottom:14px;}
+  .note.warn{background:var(--amber-bg);color:#6B4408;} .note.bad{background:var(--rust-bg);color:#7A2E1F;} .note.ok{background:var(--sage-bg);color:#345236;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px;}
+  .tile{background:var(--raised);border:1px solid var(--line);border-left:4px solid var(--sage);border-radius:var(--r);padding:14px 16px;}
+  .tile.warn{border-left-color:var(--amber);} .tile.bad{border-left-color:var(--rust);}
+  .tile .n{font-size:28px;font-weight:700;} .tile .l{font-size:12px;color:var(--soft);text-transform:uppercase;letter-spacing:.05em;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  td{padding:8px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  td input,td select{width:100%;padding:6px 8px;}
+  .tn{font-variant-numeric:tabular-nums;text-align:right;} th.tn{text-align:right;}
+  .pill{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+  .pill.ok{background:var(--sage-bg);color:#3E5C41;} .pill.low{background:var(--amber-bg);color:#8A5710;} .pill.neg{background:var(--rust-bg);color:#8A3A28;} .pill.off{background:var(--slate-bg);color:var(--slate);}
+  .pill.prep{background:var(--violet-bg);color:var(--violet);}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center;}
+  .toolbar .grow{flex:1;min-width:160px;}
+  .row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px;}
+  .field{display:flex;flex-direction:column;gap:5px;min-width:0;} .field label{font-size:12px;font-weight:600;color:var(--soft);}
+  .center{max-width:420px;margin:60px auto;padding:0 16px;}
+  .cat{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--soft);margin:18px 0 6px;}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;background:var(--rail);color:#fff;padding:12px 18px;border-radius:10px;z-index:90;max-width:calc(100% - 32px);box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:13px;}
+  .toast.err{background:var(--rust);}
+  .modal-bg{position:fixed;inset:0;background:rgba(35,36,31,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;z-index:50;}
+  .modal{background:var(--raised);border-radius:14px;padding:22px;width:100%;max-width:480px;}
+  .modal h3{margin:0 0 14px;font-family:'Archivo Black',Impact,sans-serif;font-size:15px;text-transform:uppercase;font-weight:400;}
+  .actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px;}
+  .hidden{display:none !important;}
+  .muted{color:var(--soft);}
+  @media (max-width:640px){ .rail{padding:14px 16px;} .tabs{padding-inline:16px;} main{padding-inline:12px;} .card{padding:14px;} }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast hidden" role="status"></div>
+<div id="modal" class="modal-bg hidden"><div class="modal" id="modalBody"></div></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ------------------------------------------------------------------ config */
+const DEFAULT_URL = 'https://cowkeaumgsvkecyxljwq.supabase.co';
+const BUILT_IN_KEY = '';           // optional: paste the anon key here to skip the setup screen
+const LS_URL = 'pantry_supabase_url', LS_KEY = 'pantry_supabase_anon_key';
+
+/* ------------------------------------------------------------------ helpers */
+const $ = (s, el) => (el || document).querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => { const n = parseFloat(String(v == null ? '' : v).replace(/[$,\s]/g, '')); return isNaN(n) ? null : n; };
+const fmt = n => n == null ? '—' : (Math.round(Number(n) * 100) / 100).toLocaleString();
+const money = n => n == null ? '—' : '$' + (Math.round(Number(n) * 100) / 100).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+const when = ts => { const d = new Date(ts); return d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' ' + d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}); };
+const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()); };
+const LEVEL = {staff:1, manager:2, admin:3};
+
+let sb = null, me = null, items = [], itemById = {}, sauces = [], menuRecipes = [], skuRows = [];
+let currentTab = 'dashboard';
+
+function toast(msg, isErr){
+  const t = $('#toast'); t.textContent = msg; t.className = 'toast' + (isErr ? ' err' : '');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), isErr ? 7000 : 3500);
+}
+function showModal(html){ $('#modalBody').innerHTML = html; $('#modal').classList.remove('hidden'); }
+function hideModal(){ $('#modal').classList.add('hidden'); $('#modalBody').innerHTML = ''; }
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') hideModal(); });
+
+async function q(promise){ const r = await promise; if (r.error) throw r.error; return r.data; }
+function errText(e){ return (e && (e.message || e.details)) || String(e); }
+function has(role){ return me && me.is_active && (LEVEL[me.role] || 0) >= LEVEL[role]; }
+
+/* ------------------------------------------------------------------ boot */
+function boot(){
+  const url = localStorage.getItem(LS_URL) || DEFAULT_URL;
+  const key = BUILT_IN_KEY || localStorage.getItem(LS_KEY) || '';
+  if (!key) return renderSetup(url);
+  try { sb = window.supabase.createClient(url, key); }
+  catch (e) { return renderSetup(url, 'Could not start: ' + errText(e)); }
+  sb.auth.onAuthStateChange((evt, session) => { if (evt === 'SIGNED_OUT') { me = null; renderLogin(); } });
+  sb.auth.getSession().then(({data}) => data.session ? afterLogin() : renderLogin());
+}
+
+function renderSetup(url, msg){
+  $('#app').innerHTML =
+    '<div class="center"><div class="card"><h2 class="display">The Pantry</h2>' +
+    '<p class="sub">First-time setup. Paste your Supabase project details. They are saved in this browser only.</p>' +
+    (msg ? '<div class="note bad">' + esc(msg) + '</div>' : '') +
+    '<div class="field" style="margin-bottom:10px"><label>Project URL</label><input id="setUrl" value="' + esc(url) + '" placeholder="https://xxxx.supabase.co"></div>' +
+    '<div class="field" style="margin-bottom:10px"><label>Anon / publishable key</label><input id="setKey" placeholder="eyJ... or sb_publishable_..."></div>' +
+    '<div class="note warn">Use the <b>anon / publishable</b> key from Project Settings &rarr; API. Never use the service_role or secret key.</div>' +
+    '<button class="btn" id="setSave">Save and continue</button></div></div>';
+  $('#setSave').onclick = () => {
+    const u = $('#setUrl').value.trim().replace(/\/+$/, ''), k = $('#setKey').value.trim();
+    if (!/^https:\/\/.+/.test(u) || !k) return toast('Enter both the URL and the key.', true);
+    localStorage.setItem(LS_URL, u); localStorage.setItem(LS_KEY, k); boot();
+  };
+}
+
+function renderLogin(){
+  let signup = false;
+  const draw = () => {
+    $('#app').innerHTML =
+      '<div class="center"><div class="card"><h2 class="display">The Pantry</h2>' +
+      '<p class="sub">' + (signup ? 'Create an account. A manager or admin must activate it before you can see anything.' : 'Sign in to continue.') + '</p>' +
+      '<div class="field" style="margin-bottom:10px"><label>Email</label><input id="lEmail" type="email" autocomplete="username"></div>' +
+      '<div class="field" style="margin-bottom:14px"><label>Password</label><input id="lPass" type="password" autocomplete="' + (signup ? 'new-password' : 'current-password') + '"></div>' +
+      '<div class="toolbar"><button class="btn" id="lGo">' + (signup ? 'Create account' : 'Sign in') + '</button>' +
+      '<button class="btn ghost" id="lSwap">' + (signup ? 'I have an account' : 'Create account') + '</button></div>' +
+      '<p class="sub"><a href="#" id="lReset">Change Supabase URL / key</a></p></div></div>';
+    $('#lSwap').onclick = () => { signup = !signup; draw(); };
+    $('#lReset').onclick = e => { e.preventDefault(); localStorage.removeItem(LS_KEY); boot(); };
+    $('#lPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('#lGo').click(); });
+    $('#lGo').onclick = async () => {
+      const email = $('#lEmail').value.trim(), password = $('#lPass').value;
+      if (!email || !password) return toast('Enter email and password.', true);
+      $('#lGo').disabled = true;
+      try {
+        if (signup) {
+          const {data, error} = await sb.auth.signUp({email, password});
+          if (error) throw error;
+          if (data.session) return afterLogin();
+          toast('Account created. Check your email to confirm it, then sign in.');
+          signup = false; draw();
+        } else {
+          const {error} = await sb.auth.signInWithPassword({email, password});
+          if (error) throw error;
+          afterLogin();
+        }
+      } catch (e) { toast(errText(e), true); $('#lGo').disabled = false; }
+    };
+  };
+  draw();
+}
+
+async function afterLogin(){
+  try {
+    const {data:{user}} = await sb.auth.getUser();
+    const rows = await q(sb.from('user_account').select('*').eq('user_id', user.id));
+    me = rows[0] || null;
+  } catch (e) { toast(errText(e), true); me = null; }
+  if (!me || !me.is_active) return renderWaiting();
+  await loadRefs();
+  renderShell();
+}
+
+function renderWaiting(){
+  $('#app').innerHTML =
+    '<div class="center"><div class="card"><h2 class="display">Almost there</h2>' +
+    '<div class="note warn">Your account exists but has not been activated yet. Ask an admin to switch it on, then refresh this page.</div>' +
+    '<div class="toolbar"><button class="btn" id="wRefresh">Refresh</button><button class="btn ghost" id="wOut">Sign out</button></div></div></div>';
+  $('#wRefresh').onclick = afterLogin;
+  $('#wOut').onclick = () => sb.auth.signOut();
+}
+
+async function loadRefs(){
+  items = await q(sb.from('inventory_item').select('*').order('item_name'));
+  itemById = {}; items.forEach(i => itemById[i.item_id] = i);
+  const rec = await q(sb.from('recipe').select('recipe_id,recipe_name,recipe_type,toast_menu_item,yield_quantity,is_active').order('recipe_name'));
+  sauces = rec.filter(r => r.recipe_type === 'sauce' && r.is_active);
+  menuRecipes = rec.filter(r => r.recipe_type === 'menu' && r.is_active);
+}
+
+/* ------------------------------------------------------------------ shell + router */
+const TABS = [
+  {id:'dashboard', label:'Dashboard', min:'staff', fn: viewDashboard},
+  {id:'inventory', label:'Inventory', min:'staff', fn: viewInventory},
+  {id:'log',       label:'Log waste / prep / count', min:'staff', fn: viewLog},
+  {id:'import',    label:'Import', min:'manager', fn: viewImport},
+  {id:'skus',      label:'US Foods SKUs', min:'manager', fn: viewSkus},
+  {id:'activity',  label:'Activity', min:'staff', fn: viewActivity},
+  {id:'reports',   label:'Reports', min:'staff', fn: viewReports},
+  {id:'admin',     label:'Users', min:'admin', fn: viewAdmin}
+];
+
+function renderShell(){
+  const tabs = TABS.filter(t => has(t.min));
+  if (!tabs.find(t => t.id === currentTab)) currentTab = tabs[0].id;
+  $('#app').innerHTML =
+    '<div class="rail"><h1>The Pantry</h1><div class="who"><span>' + esc(me.full_name || me.email || '') + '</span><span class="pill off">' + esc(me.role) + '</span><button class="btn ghost sm" id="outBtn" style="color:#EFEDE4;border-color:#7d8f82">Sign out</button></div></div>' +
+    '<div class="tabs" id="tabs">' + tabs.map(t => '<div class="tab' + (t.id === currentTab ? ' active' : '') + '" data-t="' + t.id + '">' + esc(t.label) + '</div>').join('') + '</div>' +
+    '<main id="view"></main>';
+  $('#outBtn').onclick = () => sb.auth.signOut();
+  $('#tabs').onclick = e => { const t = e.target.closest('.tab'); if (!t) return; currentTab = t.dataset.t; renderShell(); };
+  const tab = tabs.find(t => t.id === currentTab);
+  Promise.resolve(tab.fn()).catch(e => { $('#view').innerHTML = '<div class="note bad">' + esc(errText(e)) + '</div>'; });
+}
+
+function status(it){
+  if (!it.is_active) return '<span class="pill off">inactive</span>';
+  if (Number(it.quantity_on_hand) < 0) return '<span class="pill neg">negative</span>';
+  if (it.par_level != null && Number(it.quantity_on_hand) <= Number(it.par_level)) return '<span class="pill low">low</span>';
+  return '<span class="pill ok">ok</span>';
+}
+function table(heads, rows, empty){
+  if (!rows.length) return '<p class="muted" style="margin:6px 0">' + esc(empty || 'Nothing here.') + '</p>';
+  return '<table><thead><tr>' + heads.map(h => '<th' + (h.n ? ' class="tn"' : '') + '>' + esc(h.t || h) + '</th>').join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table>';
+}
+
+/* ------------------------------------------------------------------ dashboard */
+async function viewDashboard(){
+  const v = $('#view'); v.innerHTML = '<div class="note">Loading...</div>';
+  const [low, reorder, neg, unm] = await Promise.all([
+    q(sb.from('v_low_stock').select('*').order('item_name')),
+    q(sb.from('v_reorder_suggestions').select('*').order('item_name')),
+    q(sb.from('v_negative_stock').select('*').order('item_name')),
+    q(sb.from('v_unmatched_items').select('*').order('supplier_sku_code'))
+  ]);
+  let drift = null;
+  if (has('manager')) { try { drift = await q(sb.rpc('reconcile_stock')); } catch (e) { drift = null; } }
+  const total = reorder.reduce((s, r) => s + (Number(r.est_cost) || 0), 0);
+  const nonzero = items.filter(i => i.is_active && Number(i.quantity_on_hand) !== 0).length;
+  v.innerHTML =
+    (nonzero === 0 ? '<div class="note warn">Every item is at 0. Stock only becomes real after an opening count: go to <b>Log</b> and do a count first. Alerts also stay quiet until par levels are set (Inventory tab).</div>' : '') +
+    '<div class="grid">' +
+      '<div class="tile ' + (low.length ? 'warn' : '') + '"><div class="n">' + low.length + '</div><div class="l">Low stock items</div></div>' +
+      '<div class="tile ' + (neg.length ? 'bad' : '') + '"><div class="n">' + neg.length + '</div><div class="l">Negative stock</div></div>' +
+      '<div class="tile ' + (unm.length ? 'warn' : '') + '"><div class="n">' + unm.length + '</div><div class="l">Unmatched SKUs</div></div>' +
+      (drift == null ? '' : '<div class="tile ' + (drift.length ? 'bad' : '') + '"><div class="n">' + (drift.length ? drift.length : 'OK') + '</div><div class="l">Ledger drift</div></div>') +
+    '</div>' +
+    '<div class="card"><h2>Reorder suggestions</h2><p class="sub">Items at or under par, rounded up to whole packs of the cheapest matched SKU. Estimated total ' + money(total) + '.</p>' +
+      table([ 'Item', {t:'On hand', n:1}, {t:'Par', n:1}, 'SKU', 'Pack', {t:'Packs to order', n:1}, {t:'Est. cost', n:1} ],
+        reorder.map(r => '<tr><td>' + esc(r.item_name) + '</td><td class="tn">' + fmt(r.quantity_on_hand) + ' ' + esc(r.unit_of_measure) + '</td><td class="tn">' + fmt(r.par_level) + '</td><td class="mono">' + esc(r.supplier_sku_code || 'no matched SKU') + '</td><td>' + esc(r.pack_description || '') + '</td><td class="tn">' + (r.packs_to_order == null ? '—' : r.packs_to_order) + '</td><td class="tn">' + money(r.est_cost) + '</td></tr>'),
+        'Nothing to reorder.') + '</div>' +
+    (neg.length ? '<div class="card"><h2>Negative stock</h2><p class="sub">Recipes, deliveries and counts disagree for these. A count will fix the number; look into why it drifted.</p>' +
+      table(['Item', {t:'Quantity', n:1}], neg.map(r => '<tr><td>' + esc(r.item_name) + '</td><td class="tn">' + fmt(r.quantity_on_hand) + ' ' + esc(r.unit_of_measure) + '</td></tr>')) + '</div>' : '') +
+    (unm.length ? '<div class="card"><h2>Unmatched supplier SKUs</h2><p class="sub">Seen on invoices but not matched to an item, so they move no stock. ' + (has('manager') ? 'Match them in the US Foods SKUs tab.' : 'A manager can match them.') + '</p>' +
+      table(['SKU', 'Pack', {t:'Last cost', n:1}], unm.slice(0, 12).map(r => '<tr><td class="mono">' + esc(r.supplier_sku_code) + '</td><td>' + esc(r.pack_description || '') + '</td><td class="tn">' + money(r.last_unit_cost) + '</td></tr>')) +
+      (unm.length > 12 ? '<p class="muted">and ' + (unm.length - 12) + ' more</p>' : '') + '</div>' : '') +
+    (drift && drift.length ? '<div class="note bad">Ledger drift detected on ' + drift.length + ' item(s): the stored stock number does not equal the sum of its transactions. Tell your admin.</div>' : '');
+}
+
+/* ------------------------------------------------------------------ inventory */
+let invFilter = {q:'', cat:'all', low:false};
+function viewInventory(){
+  const cats = Array.from(new Set(items.map(i => i.category || 'Other'))).sort();
+  const v = $('#view');
+  v.innerHTML =
+    '<div class="toolbar"><input class="grow" id="iq" placeholder="Search items..." value="' + esc(invFilter.q) + '">' +
+    '<select id="ic"><option value="all">All categories</option>' + cats.map(c => '<option' + (invFilter.cat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>' +
+    '<label class="muted" style="font-size:13px"><input type="checkbox" id="il"' + (invFilter.low ? ' checked' : '') + '> low only</label>' +
+    (has('manager') ? '<button class="btn" id="iNew">+ New item</button>' : '') + '</div><div class="card" id="iTable"></div>';
+  const draw = () => {
+    const s = invFilter.q.toLowerCase();
+    const list = items.filter(i => (!s || i.item_name.toLowerCase().includes(s)) && (invFilter.cat === 'all' || (i.category || 'Other') === invFilter.cat) &&
+      (!invFilter.low || (i.par_level != null && Number(i.quantity_on_hand) <= Number(i.par_level))));
+    $('#iTable').innerHTML = table(['Item', 'Category', {t:'On hand', n:1}, {t:'Par', n:1}, {t:'Reorder qty', n:1}, 'Status', ''],
+      list.map(i => '<tr><td>' + esc(i.item_name) + '</td><td class="muted">' + esc(i.category || '') + '</td><td class="tn">' + fmt(i.quantity_on_hand) + ' ' + esc(i.unit_of_measure) + '</td><td class="tn">' + fmt(i.par_level) + '</td><td class="tn">' + fmt(i.reorder_quantity) + '</td><td>' + status(i) + '</td><td>' + (has('manager') ? '<button class="btn ghost sm" data-edit="' + i.item_id + '">Edit</button>' : '') + '</td></tr>'),
+      'No matching items.');
+    $('#iTable').querySelectorAll('[data-edit]').forEach(b => b.onclick = () => editItem(Number(b.dataset.edit)));
+  };
+  $('#iq').oninput = e => { invFilter.q = e.target.value; draw(); };
+  $('#ic').onchange = e => { invFilter.cat = e.target.value; draw(); };
+  $('#il').onchange = e => { invFilter.low = e.target.checked; draw(); };
+  if ($('#iNew')) $('#iNew').onclick = () => editItem(null);
+  draw();
+}
+
+function editItem(id){
+  const it = id ? itemById[id] : {item_name:'', category:'', unit_of_measure:'', par_level:null, reorder_quantity:null, is_active:true};
+  showModal(
+    '<h3>' + (id ? 'Edit item' : 'New item') + '</h3>' +
+    '<div class="row2"><div class="field"><label>Name</label><input id="eName" value="' + esc(it.item_name) + '"' + (id ? ' disabled' : '') + '></div>' +
+    '<div class="field"><label>Category</label><input id="eCat" value="' + esc(it.category || '') + '"></div></div>' +
+    '<div class="row2"><div class="field"><label>Unit</label><input id="eUnit" value="' + esc(it.unit_of_measure) + '"' + (id ? ' disabled' : '') + ' placeholder="oz, slice, roll..."></div>' +
+    '<div class="field"><label>Par level (alert at or below)</label><input id="ePar" type="number" step="0.01" value="' + (it.par_level == null ? '' : it.par_level) + '"></div></div>' +
+    '<div class="row2"><div class="field"><label>Reorder quantity</label><input id="eRe" type="number" step="0.01" value="' + (it.reorder_quantity == null ? '' : it.reorder_quantity) + '"></div>' +
+    '<div class="field"><label>Active</label><select id="eAct"><option value="1"' + (it.is_active ? ' selected' : '') + '>Active</option><option value="0"' + (!it.is_active ? ' selected' : '') + '>Inactive</option></select></div></div>' +
+    '<div class="note">Stock itself cannot be typed in here. Use a count in the Log tab so every change is recorded.</div>' +
+    '<div class="actions"><button class="btn ghost" id="eCancel">Cancel</button><button class="btn" id="eSave">Save</button></div>');
+  $('#eCancel').onclick = hideModal;
+  $('#eSave').onclick = async () => {
+    const row = {category: $('#eCat').value.trim() || null, par_level: num($('#ePar').value), reorder_quantity: num($('#eRe').value), is_active: $('#eAct').value === '1'};
+    try {
+      if (id) await q(sb.from('inventory_item').update(row).eq('item_id', id));
+      else {
+        row.item_name = $('#eName').value.trim(); row.unit_of_measure = $('#eUnit').value.trim();
+        if (!row.item_name || !row.unit_of_measure) return toast('Name and unit are required.', true);
+        await q(sb.from('inventory_item').insert(row));
+      }
+      hideModal(); await loadRefs(); toast('Saved.'); viewInventory();
+    } catch (e) { toast(errText(e), true); }
+  };
+}
+
+/* ------------------------------------------------------------------ log: waste / prep / count */
+const countVals = {};
+let countCat = 'all';
+function viewLog(){
+  const active = items.filter(i => i.is_active);
+  const cats = Array.from(new Set(active.map(i => i.category || 'Other'))).sort();
+  $('#view').innerHTML =
+    '<div class="card"><h2>Log waste</h2><p class="sub">Spoiled, dropped, staff meal, remake. The quantity leaves stock and the reason is recorded.</p>' +
+      '<div class="row2"><div class="field"><label>Item</label><select id="wItem">' + active.map(i => '<option value="' + i.item_id + '">' + esc(i.item_name) + ' (' + esc(i.unit_of_measure) + ')</option>').join('') + '</select></div>' +
+      '<div class="field"><label>Quantity wasted</label><input id="wQty" type="number" step="0.01" min="0" inputmode="decimal"></div>' +
+      '<div class="field"><label>Reason</label><select id="wReason"><option>Spoiled</option><option>Dropped</option><option>Staff meal</option><option>Remake / comp</option><option>Prep trim</option><option>Other</option></select></div>' +
+      '<div class="field"><label>Details (optional)</label><input id="wNote"></div></div>' +
+      '<button class="btn" id="wGo">Log waste</button></div>' +
+    '<div class="card"><h2>Log a sauce batch</h2><p class="sub">Ingredients leave stock and the finished sauce is added, in one step.</p>' +
+      '<div class="row2"><div class="field"><label>Sauce</label><select id="pSauce">' + sauces.map(s => '<option value="' + s.recipe_id + '">' + esc(s.recipe_name) + ' (batch = ' + fmt(s.yield_quantity) + ' oz)</option>').join('') + '</select></div>' +
+      '<div class="field"><label>Batches made</label><input id="pBatches" type="number" step="0.25" min="0" value="1" inputmode="decimal"></div></div>' +
+      '<div class="chips" style="margin-bottom:12px"><button class="btn ghost sm" data-b="0.5">&frac12;</button><button class="btn ghost sm" data-b="1">1</button><button class="btn ghost sm" data-b="2">2</button><button class="btn ghost sm" data-b="3">3</button></div>' +
+      '<div class="note">A sauce made from another sauce (like basil aioli) takes that sauce from stock. Log the pesto batch first if you made it.</div>' +
+      '<button class="btn prep" id="pGo">Log batch</button></div>' +
+    '<div class="card"><h2>Count stock</h2><p class="sub">Count what is physically on the shelf and enter only the items you counted. The system records the difference, so shrinkage shows up in Reports. Your first count of an item sets its starting stock.</p>' +
+      '<div class="toolbar"><select id="cCat"><option value="all">All categories</option>' + cats.map(c => '<option' + (countCat === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>' +
+      '<input id="cNote" class="grow" placeholder="Note (optional), e.g. Monday protein count"></div><div id="cTable"></div>' +
+      '<div class="toolbar" style="margin-top:12px"><button class="btn" id="cGo">Submit count</button><span class="muted" id="cInfo"></span></div></div>';
+
+  $('#wGo').onclick = async () => {
+    const qty = num($('#wQty').value);
+    if (!qty || qty <= 0) return toast('Enter a quantity above zero.', true);
+    const reason = $('#wReason').value, detail = $('#wNote').value.trim();
+    try {
+      const r = await q(sb.rpc('record_waste', {p_item_id: Number($('#wItem').value), p_qty: qty, p_notes: reason + (detail ? ': ' + detail : '')}));
+      toast('Logged. Stock is now ' + fmt(r.quantity_on_hand) + '.'); $('#wQty').value = ''; $('#wNote').value = ''; await loadRefs();
+    } catch (e) { toast(errText(e), true); }
+  };
+  document.querySelectorAll('[data-b]').forEach(b => b.onclick = () => { $('#pBatches').value = b.dataset.b; });
+  $('#pGo').onclick = async () => {
+    const n = num($('#pBatches').value);
+    if (!n || n <= 0) return toast('Enter batches above zero.', true);
+    if (!$('#pSauce').value) return toast('No sauce recipes found.', true);
+    try {
+      const r = await q(sb.rpc('record_prep', {p_recipe_id: Number($('#pSauce').value), p_batches: n}));
+      toast(r.item_name + ' is now ' + fmt(r.quantity_on_hand) + ' oz.'); await loadRefs();
+    } catch (e) { toast(errText(e), true); }
+  };
+  const drawCount = () => {
+    const list = active.filter(i => countCat === 'all' || (i.category || 'Other') === countCat);
+    $('#cTable').innerHTML = table(['Item', 'Unit', {t:'Counted', n:1}],
+      list.map(i => '<tr><td>' + esc(i.item_name) + '</td><td class="muted">' + esc(i.unit_of_measure) + '</td><td style="width:130px"><input type="number" step="0.01" min="0" inputmode="decimal" data-c="' + i.item_id + '" value="' + esc(countVals[i.item_id] == null ? '' : countVals[i.item_id]) + '"></td></tr>'),
+      'No items.');
+    $('#cTable').querySelectorAll('[data-c]').forEach(inp => inp.oninput = () => { countVals[inp.dataset.c] = inp.value; tally(); });
+    tally();
+  };
+  const tally = () => { const n = Object.values(countVals).filter(x => x !== '' && x != null).length; $('#cInfo').textContent = n + ' item(s) entered'; };
+  $('#cCat').onchange = e => { countCat = e.target.value; drawCount(); };
+  $('#cGo').onclick = async () => {
+    const lines = Object.keys(countVals).filter(k => countVals[k] !== '' && num(countVals[k]) != null).map(k => ({item_id: Number(k), counted: num(countVals[k])}));
+    if (!lines.length) return toast('Enter at least one counted quantity.', true);
+    if (lines.some(l => l.counted < 0)) return toast('Counts cannot be negative.', true);
+    if (!confirm('Submit ' + lines.length + ' counted item(s)? Stock will be set to what you counted.')) return;
+    try {
+      const r = await q(sb.rpc('record_counts', {p_lines: lines, p_source_file: 'count-' + stamp(), p_notes: $('#cNote').value.trim() || null}));
+      Object.keys(countVals).forEach(k => delete countVals[k]);
+      toast('Count saved for ' + r.items_counted + ' item(s).'); await loadRefs(); drawCount();
+    } catch (e) { toast(errText(e), true); }
+  };
+  drawCount();
+}
+
+/* ------------------------------------------------------------------ CSV parsing */
+function parseCSV(text){
+  text = String(text || '').replace(/^\uFEFF/, '');
+  const first = text.split(/\r?\n/).find(l => l.trim()) || '';
+  const cands = [',', '\t', ';'];
+  let delim = ',', best = -1;
+  cands.forEach(d => { const c = first.split(d).length; if (c > best) { best = c; delim = d; } });
+  const rows = []; let row = [], cur = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') { if (text[i+1] === '"') { cur += '"'; i++; } else inQ = false; }
+      else cur += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === delim) { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i+1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; }
+    else cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(c => String(c).trim() !== '')).map(r => r.map(c => String(c).trim()));
+}
+function guessCol(headers, patterns){
+  for (const p of patterns) { const i = headers.findIndex(h => p.test(h)); if (i >= 0) return i; }
+  return -1;
+}
+
+/* ------------------------------------------------------------------ import */
+let salesState = null, delState = null;
+async function viewImport(){
+  skuRows = await q(sb.from('supplier_sku').select('*').order('supplier_sku_code'));
+  $('#view').innerHTML =
+    '<div class="note">Choose a CSV file or paste its contents. You see a preview first and nothing changes until you confirm. Every import needs a unique file name: importing the same name twice does nothing, which protects you from double-counting.</div>' +
+    '<div class="card"><h2>Toast sales</h2><p class="sub">Toast Product Mix / Sales Summary export. Needs an item name column and a quantity sold column.</p>' +
+      '<div class="toolbar"><input type="file" id="sFile" accept=".csv,.txt,.tsv"></div>' +
+      '<textarea id="sText" rows="4" style="width:100%;font-family:JetBrains Mono,monospace;font-size:12px" placeholder="...or paste CSV text here"></textarea>' +
+      '<div class="toolbar" style="margin-top:10px"><button class="btn" id="sPrev">Preview</button></div><div id="sOut"></div></div>' +
+    '<div class="card"><h2>US Foods delivery</h2><p class="sub">MOX&emacr; CSV or invoice lines. Needs a product number column and a quantity <b>shipped</b> column. For catch-weight meats, the quantity must be shipped pounds.</p>' +
+      '<div class="toolbar"><input type="file" id="dFile" accept=".csv,.txt,.tsv"></div>' +
+      '<textarea id="dText" rows="4" style="width:100%;font-family:JetBrains Mono,monospace;font-size:12px" placeholder="...or paste CSV text here"></textarea>' +
+      '<div class="toolbar" style="margin-top:10px"><button class="btn" id="dPrev">Preview</button></div><div id="dOut"></div></div>';
+  wireImport('s', 'Sales', ['item', 'qty'], salesPreview);
+  wireImport('d', 'Delivery', ['sku', 'qty', 'cost'], deliveryPreview);
+}
+function wireImport(p, label, cols, previewFn){
+  const state = {name: '', rows: null};
+  if (p === 's') salesState = state; else delState = state;
+  $('#' + p + 'File').onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    state.name = f.name; const rd = new FileReader();
+    rd.onload = () => { $('#' + p + 'Text').value = String(rd.result); previewFn(state); };
+    rd.readAsText(f);
+  };
+  $('#' + p + 'Prev').onclick = () => { if (!state.name) state.name = ''; previewFn(state); };
+}
+function colSelect(id, headers, sel, label, optional){
+  return '<div class="field"><label>' + esc(label) + '</label><select id="' + id + '">' + (optional ? '<option value="-1">(none)</option>' : '') +
+    headers.map((h, i) => '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>' + esc(h || ('column ' + (i + 1))) + '</option>').join('') + '</select></div>';
+}
+
+function salesPreview(state){
+  const rows = parseCSV($('#sText').value);
+  if (rows.length < 2) return ($('#sOut').innerHTML = '<div class="note bad">Could not read any rows. Check the file.</div>');
+  const headers = rows[0];
+  const ci = guessCol(headers, [/^(menu )?item( name)?$/i, /menu item/i, /^name$/i, /item/i]);
+  const cq = guessCol(headers, [/qty sold/i, /item qty/i, /^qty$/i, /quantity/i, /count/i, /sold/i]);
+  $('#sOut').innerHTML =
+    '<div class="row2" style="margin-top:12px">' + colSelect('sCi', headers, ci, 'Item name column') + colSelect('sCq', headers, cq, 'Quantity sold column') +
+    '<div class="field"><label>Import name (must be unique)</label><input id="sName" value="' + esc(state.name ? state.name.replace(/\.[^.]+$/, '') + '-' + stamp() : 'toast-' + stamp()) + '"></div></div><div id="sRes"></div>';
+  const redraw = () => {
+    const iI = Number($('#sCi').value), iQ = Number($('#sCq').value), agg = {};
+    rows.slice(1).forEach(r => { const name = (r[iI] || '').trim(), qty = num(r[iQ]); if (name && qty != null && qty > 0) agg[name] = (agg[name] || 0) + qty; });
+    const lines = Object.keys(agg).map(k => ({toast_item: k, qty: agg[k]}));
+    const known = {}; menuRecipes.forEach(m => { if (m.toast_menu_item) known[m.toast_menu_item.trim().toLowerCase()] = m.recipe_name; });
+    const unmatched = lines.filter(l => !known[l.toast_item.toLowerCase()]).length;
+    $('#sRes').innerHTML =
+      '<div class="note ' + (unmatched ? 'warn' : 'ok') + '">' + lines.length + ' distinct item(s). ' + (unmatched ? unmatched + ' do not match a menu recipe and will be reported back (they deduct nothing).' : 'All match a menu recipe.') + '</div>' +
+      table(['Toast item', {t:'Qty', n:1}, 'Matches'], lines.slice(0, 40).map(l => '<tr><td>' + esc(l.toast_item) + '</td><td class="tn">' + fmt(l.qty) + '</td><td>' + (known[l.toast_item.toLowerCase()] ? '<span class="pill ok">' + esc(known[l.toast_item.toLowerCase()]) + '</span>' : '<span class="pill low">no match</span>') + '</td></tr>')) +
+      (lines.length > 40 ? '<p class="muted">showing 40 of ' + lines.length + '</p>' : '') +
+      '<div class="toolbar" style="margin-top:12px"><button class="btn" id="sGo"' + (lines.length ? '' : ' disabled') + '>Import and deduct stock</button></div><div id="sDone"></div>';
+    if ($('#sGo')) $('#sGo').onclick = async () => {
+      const nm = $('#sName').value.trim(); if (!nm) return toast('Give the import a name.', true);
+      if (!confirm('Deduct stock for ' + lines.length + ' item(s) under the name "' + nm + '"?')) return;
+      $('#sGo').disabled = true;
+      try {
+        const r = await q(sb.rpc('record_sales', {p_source_file: nm, p_lines: lines}));
+        if (r.status === 'already_applied') $('#sDone').innerHTML = '<div class="note warn">"' + esc(nm) + '" was already imported. Nothing changed.</div>';
+        else $('#sDone').innerHTML = '<div class="note ok">Imported ' + r.items_matched + ' item(s), ' + r.transactions + ' stock transaction(s).</div>' +
+          ((r.unmatched || []).length ? '<div class="note warn">Not matched, so nothing was deducted for: <b>' + r.unmatched.map(esc).join(', ') + '</b>. Fix the Toast name on the recipe, then import just those lines under a new name.</div>' : '');
+        await loadRefs();
+      } catch (e) { toast(errText(e), true); $('#sGo').disabled = false; }
+    };
+  };
+  ['sCi', 'sCq'].forEach(id => $('#' + id).onchange = redraw);
+  redraw();
+}
+
+function deliveryPreview(state){
+  const rows = parseCSV($('#dText').value);
+  if (rows.length < 2) return ($('#dOut').innerHTML = '<div class="note bad">Could not read any rows. Check the file.</div>');
+  const headers = rows[0];
+  const cs = guessCol(headers, [/product (number|no|#|code)/i, /item (number|no|#|code)/i, /^sku$/i, /sku/i, /product/i]);
+  const cq = guessCol(headers, [/ship/i, /^qty$/i, /quantity/i, /delivered/i, /qty/i]);
+  const cc = guessCol(headers, [/unit price/i, /^price$/i, /unit cost/i, /cost/i, /price/i]);
+  $('#dOut').innerHTML =
+    '<div class="row2" style="margin-top:12px">' + colSelect('dCs', headers, cs, 'Product number (SKU) column') + colSelect('dCq', headers, cq, 'Quantity shipped column') + colSelect('dCc', headers, cc, 'Unit price column (optional)', true) +
+    '<div class="field"><label>Import name (must be unique)</label><input id="dName" value="' + esc(state.name ? state.name.replace(/\.[^.]+$/, '') + '-' + stamp() : 'delivery-' + stamp()) + '"></div></div><div id="dRes"></div>';
+  const redraw = () => {
+    const iS = Number($('#dCs').value), iQ = Number($('#dCq').value), iC = Number($('#dCc').value), agg = {};
+    rows.slice(1).forEach(r => {
+      const sku = (r[iS] || '').trim(), qty = num(r[iQ]); if (!sku || qty == null) return;
+      if (!agg[sku]) agg[sku] = {sku: sku, qty: 0, unit_cost: null};
+      agg[sku].qty += qty; if (iC >= 0) { const c = num(r[iC]); if (c != null) agg[sku].unit_cost = c; }
+    });
+    const lines = Object.keys(agg).map(k => agg[k]);
+    const byCode = {}; skuRows.forEach(s => byCode[s.supplier_sku_code] = s);
+    const status = l => { const s = byCode[l.sku]; return !s ? 'new' : (s.item_id ? 'ok' : 'unmatched'); };
+    const nNew = lines.filter(l => status(l) === 'new').length, nUn = lines.filter(l => status(l) === 'unmatched').length;
+    $('#dRes').innerHTML =
+      '<div class="note ' + (nNew + nUn ? 'warn' : 'ok') + '">' + lines.length + ' SKU(s). ' + (nNew + nUn ? (nNew + nUn) + ' are not matched to an item yet and will move no stock until a manager matches them in the SKUs tab.' : 'All matched.') + '</div>' +
+      table(['SKU', {t:'Qty', n:1}, {t:'Unit price', n:1}, 'Item'], lines.slice(0, 50).map(l => { const s = byCode[l.sku], st = status(l);
+        return '<tr><td class="mono">' + esc(l.sku) + '</td><td class="tn">' + fmt(l.qty) + '</td><td class="tn">' + money(l.unit_cost) + '</td><td>' + (st === 'ok' ? '<span class="pill ok">' + esc((itemById[s.item_id] || {}).item_name || 'matched') + '</span>' : (st === 'new' ? '<span class="pill low">new SKU</span>' : '<span class="pill low">unmatched</span>')) + '</td></tr>'; })) +
+      '<div class="toolbar" style="margin-top:12px"><button class="btn" id="dGo"' + (lines.length ? '' : ' disabled') + '>Import and add stock</button></div><div id="dDone"></div>';
+    if ($('#dGo')) $('#dGo').onclick = async () => {
+      const nm = $('#dName').value.trim(); if (!nm) return toast('Give the import a name.', true);
+      if (!confirm('Add stock for ' + lines.length + ' SKU(s) under the name "' + nm + '"?')) return;
+      $('#dGo').disabled = true;
+      try {
+        const r = await q(sb.rpc('record_delivery', {p_source_file: nm, p_lines: lines}));
+        if (r.status === 'already_applied') $('#dDone').innerHTML = '<div class="note warn">"' + esc(nm) + '" was already imported. Nothing changed.</div>';
+        else $('#dDone').innerHTML = '<div class="note ok">Added stock for ' + r.transactions + ' SKU(s).</div>' +
+          ((r.unmatched || []).length ? '<div class="note warn">These SKUs are not matched yet and added nothing: <b>' + r.unmatched.map(esc).join(', ') + '</b>. Match them in the US Foods SKUs tab, then import them again under a new name.</div>' : '');
+        await loadRefs(); skuRows = await q(sb.from('supplier_sku').select('*').order('supplier_sku_code'));
+      } catch (e) { toast(errText(e), true); $('#dGo').disabled = false; }
+    };
+  };
+  ['dCs', 'dCq', 'dCc'].forEach(id => $('#' + id).onchange = redraw);
+  redraw();
+}
+
+/* ------------------------------------------------------------------ SKUs */
+let skuFilter = 'unmatched';
+async function viewSkus(){
+  skuRows = await q(sb.from('supplier_sku').select('*').order('supplier_sku_code'));
+  $('#view').innerHTML =
+    '<div class="note">A delivery line only adds stock once its SKU is matched to an item with a conversion: <b>how many of the item\'s unit are in one pack</b>. For catch-weight meats (priced per lb), enter item units <b>per pound</b> (for ounces, 16) and enter shipped pounds on delivery.</div>' +
+    '<div class="toolbar"><select id="kF"><option value="unmatched">Unmatched</option><option value="matched">Matched</option><option value="all">All</option></select><input id="kQ" class="grow" placeholder="Search SKU or description..."></div><div class="card" id="kT"></div>';
+  $('#kF').value = skuFilter;
+  const draw = () => {
+    const s = $('#kQ').value.trim().toLowerCase();
+    const list = skuRows.filter(r => (skuFilter === 'all' || (skuFilter === 'matched') === !!r.item_id) && (!s || r.supplier_sku_code.toLowerCase().includes(s) || (r.pack_description || '').toLowerCase().includes(s)));
+    const opts = '<option value="">(choose item)</option>' + items.map(i => '<option value="' + i.item_id + '">' + esc(i.item_name) + ' (' + esc(i.unit_of_measure) + ')</option>').join('');
+    $('#kT').innerHTML = table(['SKU', 'Pack as invoiced', 'Matches item', {t:'Item units per pack', n:1}, {t:'Last price', n:1}, ''],
+      list.map(r => '<tr data-k="' + esc(r.supplier_sku_code) + '"><td class="mono">' + esc(r.supplier_sku_code) + '</td><td>' + esc(r.pack_description || '') + '</td>' +
+        '<td style="min-width:200px"><select data-f="item">' + opts.replace('value="' + r.item_id + '"', 'value="' + r.item_id + '" selected') + '</select></td>' +
+        '<td style="width:120px"><input type="number" step="0.01" data-f="units" value="' + (r.units_per_pack == null ? '' : r.units_per_pack) + '"></td>' +
+        '<td style="width:110px"><input type="number" step="0.01" data-f="cost" value="' + (r.last_unit_cost == null ? '' : r.last_unit_cost) + '"></td>' +
+        '<td><button class="btn sm" data-save="1">Save</button></td></tr>'), 'No SKUs in this view.');
+    $('#kT').querySelectorAll('[data-save]').forEach(b => b.onclick = async () => {
+      const tr = b.closest('tr'), code = tr.dataset.k, item = Number(tr.querySelector('[data-f="item"]').value), units = num(tr.querySelector('[data-f="units"]').value), cost = num(tr.querySelector('[data-f="cost"]').value);
+      if (!item || !units || units <= 0) return toast('Choose an item and enter a conversion above zero.', true);
+      try { await q(sb.rpc('confirm_sku', {p_sku_code: code, p_item_id: item, p_units_per_pack: units, p_last_unit_cost: cost})); toast('Matched ' + code + '.');
+        skuRows = await q(sb.from('supplier_sku').select('*').order('supplier_sku_code')); draw(); } catch (e) { toast(errText(e), true); }
+    });
+  };
+  $('#kF').onchange = e => { skuFilter = e.target.value; draw(); };
+  $('#kQ').oninput = draw;
+  draw();
+}
+
+/* ------------------------------------------------------------------ activity */
+async function viewActivity(){
+  $('#view').innerHTML = '<div class="note">Loading...</div>';
+  const tx = await q(sb.from('stock_transaction').select('*').order('transaction_id', {ascending: false}).limit(150));
+  let imports = [];
+  if (has('manager')) {
+    const files = await q(sb.from('stock_transaction').select('source_file,transaction_type,transaction_at').not('source_file', 'is', null).order('transaction_id', {ascending: false}).limit(1000));
+    const seen = {}, reversed = {};
+    files.forEach(f => { if (f.source_file.indexOf('reversal:') === 0) reversed[f.source_file.slice(9)] = true; });
+    files.forEach(f => { if (f.source_file.indexOf('reversal:') !== 0 && !seen[f.source_file]) { seen[f.source_file] = true; imports.push({name: f.source_file, type: f.transaction_type, at: f.transaction_at, reversed: !!reversed[f.source_file]}); } });
+  }
+  $('#view').innerHTML =
+    (has('manager') ? '<div class="card"><h2>Imports and counts</h2><p class="sub">Reverse a wrong import with one click. It writes opposite entries; nothing is deleted.</p>' +
+      table(['Name', 'Type', 'When', ''], imports.slice(0, 30).map(f => '<tr><td class="mono">' + esc(f.name) + '</td><td>' + esc(f.type) + '</td><td class="muted">' + esc(when(f.at)) + '</td><td>' + (f.reversed ? '<span class="pill off">reversed</span>' : '<button class="btn danger sm" data-rev="' + esc(f.name) + '">Reverse</button>') + '</td></tr>'), 'No imports yet.') + '</div>' : '') +
+    '<div class="card"><h2>Latest stock changes</h2>' +
+      table(['When', 'Item', 'Type', {t:'Change', n:1}, 'Note'], tx.map(t => { const it = itemById[t.item_id] || {}, ch = Number(t.quantity_change);
+        return '<tr><td class="muted">' + esc(when(t.transaction_at)) + '</td><td>' + esc(it.item_name || t.item_id) + '</td><td>' + esc(t.transaction_type) + '</td><td class="tn" style="color:' + (ch < 0 ? 'var(--rust)' : 'var(--sage)') + ';font-weight:700">' + (ch > 0 ? '+' : '') + fmt(ch) + ' ' + esc(it.unit_of_measure || '') + '</td><td class="muted">' + esc(t.notes || '') + '</td></tr>'; }), 'No activity yet.') + '</div>';
+  document.querySelectorAll('[data-rev]').forEach(b => b.onclick = async () => {
+    if (!confirm('Reverse "' + b.dataset.rev + '"? Every change from it will be undone.')) return;
+    try { await q(sb.rpc('reverse_import', {p_source_file: b.dataset.rev})); toast('Reversed.'); await loadRefs(); viewActivity(); } catch (e) { toast(errText(e), true); }
+  });
+}
+
+/* ------------------------------------------------------------------ reports */
+async function viewReports(){
+  $('#view').innerHTML = '<div class="note">Loading...</div>';
+  const [waste, shrink] = await Promise.all([
+    q(sb.from('v_waste_log').select('*').order('transaction_at', {ascending: false}).limit(40)),
+    q(sb.from('v_count_variance').select('*').order('transaction_at', {ascending: false}).limit(40))
+  ]);
+  const wTotal = waste.reduce((s, r) => s + (Number(r.est_cost) || 0), 0), sTotal = shrink.reduce((s, r) => s + (Number(r.variance_cost) || 0), 0);
+  $('#view').innerHTML =
+    '<div class="card"><h2>Shrinkage (count variance)</h2><p class="sub">What each count found versus what the system expected. Negative means less on the shelf than expected. An item\'s first count is its opening count and is not shown here. Net ' + money(sTotal) + '.</p>' +
+      table(['When', 'Item', {t:'Variance', n:1}, {t:'Value', n:1}, 'Note'], shrink.map(r => '<tr><td class="muted">' + esc(when(r.transaction_at)) + '</td><td>' + esc(r.item_name) + '</td><td class="tn">' + fmt(r.variance) + ' ' + esc(r.unit_of_measure) + '</td><td class="tn">' + money(r.variance_cost) + '</td><td class="muted">' + esc(r.notes || '') + '</td></tr>'), 'No repeat counts yet. Shrinkage appears after the second count of an item.') + '</div>' +
+    '<div class="card"><h2>Waste log</h2><p class="sub">Estimated cost ' + money(wTotal) + ' (priced from matched supplier SKUs).</p>' +
+      table(['When', 'Item', {t:'Wasted', n:1}, {t:'Est. cost', n:1}, 'Reason', 'By'], waste.map(r => '<tr><td class="muted">' + esc(when(r.transaction_at)) + '</td><td>' + esc(r.item_name) + '</td><td class="tn">' + fmt(r.quantity_wasted) + ' ' + esc(r.unit_of_measure) + '</td><td class="tn">' + money(r.est_cost) + '</td><td>' + esc(r.reason || '') + '</td><td class="muted">' + esc(r.logged_by || '') + '</td></tr>'), 'No waste logged yet.') + '</div>';
+}
+
+/* ------------------------------------------------------------------ admin */
+async function viewAdmin(){
+  const users = await q(sb.from('user_account').select('*').order('created_at'));
+  $('#view').innerHTML =
+    '<div class="note">New sign-ups start as inactive staff. Switch people on here. There must always be at least one active admin.</div>' +
+    '<div class="card">' + table(['Email', 'Name', 'Role', 'Active', ''], users.map(u => '<tr data-u="' + esc(u.user_id) + '"><td>' + esc(u.email || '') + '</td>' +
+      '<td><input data-f="name" value="' + esc(u.full_name || '') + '"></td>' +
+      '<td style="width:130px"><select data-f="role">' + ['staff', 'manager', 'admin'].map(r => '<option' + (u.role === r ? ' selected' : '') + '>' + r + '</option>').join('') + '</select></td>' +
+      '<td style="width:110px"><select data-f="act"><option value="1"' + (u.is_active ? ' selected' : '') + '>Active</option><option value="0"' + (!u.is_active ? ' selected' : '') + '>Inactive</option></select></td>' +
+      '<td><button class="btn sm" data-save="1">Save</button></td></tr>')) + '</div>';
+  document.querySelectorAll('[data-save]').forEach(b => b.onclick = async () => {
+    const tr = b.closest('tr');
+    try {
+      await q(sb.rpc('set_user', {p_user_id: tr.dataset.u, p_role: tr.querySelector('[data-f="role"]').value, p_is_active: tr.querySelector('[data-f="act"]').value === '1', p_full_name: tr.querySelector('[data-f="name"]').value.trim() || null}));
+      toast('Saved.');
+      if (tr.dataset.u === me.user_id) { const rows = await q(sb.from('user_account').select('*').eq('user_id', me.user_id)); me = rows[0]; renderShell(); }
+    } catch (e) { toast(errText(e), true); }
+  });
+}
+
+boot();
+})();
+</script>
+</body>
+</html>
