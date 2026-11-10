@@ -70,6 +70,33 @@
   .hidden{display:none !important;}
   .muted{color:var(--soft);}
   @media (max-width:640px){ .rail{padding:14px 16px;} .tabs{padding-inline:16px;} main{padding-inline:12px;} .card{padding:14px;} }
+
+  /* ---- built-in assistant (managers only) ---- */
+  .bot-fab{position:fixed;right:18px;bottom:18px;width:56px;height:56px;border-radius:50%;border:none;background:var(--rail);color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;z-index:45;}
+  .bot-fab:hover{background:var(--rail2);}
+  .bot-panel{position:fixed;right:18px;bottom:84px;width:400px;max-width:calc(100% - 36px);height:min(600px,calc(100vh - 110px));background:var(--raised);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.22);display:flex;flex-direction:column;z-index:45;overflow:hidden;}
+  .bot-head{background:var(--rail);color:#EFEDE4;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+  .bot-head b{font-family:'Archivo Black',Impact,sans-serif;font-weight:400;font-size:13px;letter-spacing:.06em;text-transform:uppercase;}
+  .bot-head button{background:transparent;border:none;color:#EFEDE4;font-size:20px;line-height:1;cursor:pointer;padding:2px 6px;}
+  .bot-log{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--paper);}
+  .bot-msg{flex-shrink:0;max-width:100%;font-size:13px;line-height:1.45;border-radius:10px;padding:9px 11px;overflow-x:auto;}
+  .bot-msg.me{align-self:flex-end;max-width:85%;background:var(--rail);color:#fff;}
+  .bot-msg.it{align-self:stretch;background:var(--raised);border:1px solid var(--line);}
+  .bot-msg p{margin:0 0 6px;} .bot-msg p:last-child{margin-bottom:0;}
+  .bot-msg table{font-size:12px;margin:6px 0;} .bot-msg th{font-size:10px;padding:4px 6px;} .bot-msg td{padding:5px 6px;}
+  .bot-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;}
+  .bot-chip{border:1px solid var(--line);background:var(--raised);color:var(--ink);border-radius:99px;padding:4px 10px;font-size:12px;cursor:pointer;}
+  .bot-chip:hover{border-color:var(--soft);}
+  .bot-quick{padding:8px 12px 0;border-top:1px solid var(--line);background:var(--raised);}
+  .bot-quick .bot-chips{flex-wrap:nowrap;overflow-x:auto;margin-top:0;padding-bottom:4px;}
+  .bot-quick .bot-chip{white-space:nowrap;flex-shrink:0;}
+  .bot-in{display:flex;gap:8px;padding:10px 12px 12px;background:var(--raised);}
+  .bot-in input{flex:1;}
+  .bot-card{border:1px solid var(--line);border-left:4px solid var(--violet);border-radius:8px;padding:10px;margin:8px 0;background:var(--raised);}
+  .bot-card .field{margin-top:6px;} .bot-card select,.bot-card input{width:100%;padding:6px 8px;font-size:13px;}
+  .bot-why{font-size:12px;color:var(--soft);margin-top:6px;}
+  .bot-why.check{color:#8A5710;}
+  @media (max-width:640px){ .bot-panel{right:8px;left:8px;width:auto;max-width:none;bottom:80px;height:calc(100vh - 100px);} .bot-fab{right:12px;bottom:12px;} }
 </style>
 </head>
 <body>
@@ -139,6 +166,7 @@ function renderSetup(url, msg){
 }
 
 function renderLogin(){
+  unmountBot();
   let signup = false;
   const draw = () => {
     $('#app').innerHTML =
@@ -186,6 +214,7 @@ async function afterLogin(){
 }
 
 function renderWaiting(){
+  unmountBot();
   $('#app').innerHTML =
     '<div class="center"><div class="card"><h2 class="display">Almost there</h2>' +
     '<div class="note warn">Your account exists but has not been activated yet. Ask an admin to switch it on, then refresh this page.</div>' +
@@ -225,6 +254,7 @@ function renderShell(){
   $('#tabs').onclick = e => { const t = e.target.closest('.tab'); if (!t) return; currentTab = t.dataset.t; renderShell(); };
   const tab = tabs.find(t => t.id === currentTab);
   Promise.resolve(tab.fn()).catch(e => { $('#view').innerHTML = '<div class="note bad">' + esc(errText(e)) + '</div>'; });
+  mountBot();
 }
 
 function status(it){
@@ -615,6 +645,467 @@ async function viewAdmin(){
       toast('Saved.');
       if (tr.dataset.u === me.user_id) { const rows = await q(sb.from('user_account').select('*').eq('user_id', me.user_id)); me = rows[0]; renderShell(); }
     } catch (e) { toast(errText(e), true); }
+  });
+}
+
+/* ==================================================================
+   BUILT-IN ASSISTANT (managers and admins only, no outside AI)
+   Matches keywords + item names to a fixed set of questions and answers
+   them from the same Supabase tables/views the rest of the app uses.
+   ================================================================== */
+const BOT = {last: null, lastItems: null, skuOffset: 0, busy: false};
+
+const ABBR = {
+  shrd:'shredded', shred:'shredded', chkn:'chicken', chix:'chicken', brst:'breast', bnls:'boneless', skls:'skinless',
+  tom:'tomato', toms:'tomato', frz:'frozen', frzn:'frozen', frsh:'fresh', slcd:'sliced', slc:'sliced', grnd:'ground',
+  bf:'beef', mozz:'mozzarella', moz:'mozzarella', ched:'cheddar', chdr:'cheddar', parm:'parmesan', chs:'cheese',
+  lett:'lettuce', ltc:'lettuce', onn:'onion', pepr:'pepper', ppr:'pepper', sce:'sauce', drsg:'dressing', mayo:'mayonnaise',
+  veg:'vegetable', brd:'bread', tort:'tortilla', grlc:'garlic', bsl:'basil', psto:'pesto', crm:'cream', btr:'butter',
+  lqd:'liquid', whl:'whole', ckd:'cooked', bcn:'bacon', tky:'turkey', trky:'turkey', pot:'potato', ptato:'potato',
+  avo:'avocado', jal:'jalapeno', mush:'mushroom', mshrm:'mushroom', spin:'spinach', cuc:'cucumber', pkl:'pickle',
+  sdoug:'sourdough', sdough:'sourdough', capco:'capicola', capi:'capicola', chedr:'cheddar', prov:'provolone', swis:'swiss',
+  sprg:'spring', wht:'white', plld:'pulled', rstd:'roasted', rst:'roasted', fire:'roasted', cibat:'ciabatta', ciab:'ciabatta',
+  hony:'honey', smkd:'smoked', bnls:'boneless', grany:'granny', chpd:'chopped', mncd:'minced', vngr:'vinegar', balsmc:'balsamic'
+};
+const STOP = new Set(('a an the of on in at for to is are was were do does did we i me my our us you how much many what whats ' +
+  'which who when where show tell give list get have has had any some please can could would there left right now currently current ' +
+  'about and or with from by this that last past week weeks month months day days today yesterday it its all every total amount number ' +
+  'top most biggest highest more next our status level levels').split(' '));
+const INTENT_WORDS = new Set(('low short running out order orders reorder buy need needs negative sku skus unmatched match matched ' +
+  'mapping map waste wasted wasting threw thrown toss tossed spoil spoiled trash shrink shrinkage variance missing use used usage uses ' +
+  'sold sales sale sell went through consumed consume delivered delivery deliveries received receive came shipment stock inventory ' +
+  'hand par count counted cost costs value help check audit verify conversion conversions wrong spent').split(' '));
+
+function toks(s){ return String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean).map(t => ABBR[t] || t); }
+function lev(a, b){
+  const d = []; for (let i = 0; i <= a.length; i++) d[i] = [i];
+  for (let j = 0; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function tokScore(q, t){
+  if (q === t) return 1;
+  if ((q.endsWith('s') && q.slice(0, -1) === t) || (t.endsWith('s') && t.slice(0, -1) === q) || (q.endsWith('es') && q.slice(0, -2) === t)) return .95;
+  if (q.length >= 3 && t.startsWith(q)) return .85;
+  if (q.length >= 4 && t.length >= 4 && lev(q, t) <= (q.length >= 7 ? 2 : 1)) return .8;
+  if (t.length >= 4 && q.startsWith(t)) return .75;
+  return 0;
+}
+function scoreName(qt, name){
+  const nt = toks(name); if (!qt.length || !nt.length) return 0;
+  let sum = 0; const used = new Set();
+  qt.forEach(q => { let best = 0, bi = -1; nt.forEach((t, i) => { const s = tokScore(q, t); if (s > best) { best = s; bi = i; } }); sum += best; if (bi >= 0 && best > 0) used.add(bi); });
+  return (sum / qt.length) * .85 + (used.size / nt.length) * .15;
+}
+// Words left in the question after removing filler and intent words.
+function itemWords(text){ return toks(text).filter(t => t.length > 1 && !STOP.has(t) && !INTENT_WORDS.has(t) && !/^\d+(\.\d+)?$/.test(t)); }
+// Best-matching inventory items. Returns every item tied (within .06) with the best score.
+function findItems(text, pool){
+  const qt = itemWords(text); if (!qt.length) return [];
+  const scored = (pool || items).map(i => ({i, s: scoreName(qt, i.item_name)})).filter(x => x.s >= .6).sort((a, b) => b.s - a.s);
+  if (!scored.length) return [];
+  return scored.filter(x => x.s >= scored[0].s - .06).slice(0, 8).map(x => x.i);
+}
+
+function parseRange(t){
+  const now = new Date(), y = now.getFullYear(), mo = now.getMonth();
+  const today = new Date(y, mo, now.getDate());
+  const add = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const monday = add(today, -((today.getDay() + 6) % 7));
+  let m;
+  if (/\byesterday\b/.test(t)) return {from: add(today, -1), to: today, label: 'yesterday'};
+  if (/\btoday\b/.test(t)) return {from: today, to: add(today, 1), label: 'today'};
+  if ((m = t.match(/\b(?:last|past)\s+(\d+)\s*days?\b/))) return {from: add(today, -(Number(m[1]) - 1)), to: add(today, 1), label: 'the last ' + m[1] + ' days'};
+  if ((m = t.match(/\b(?:last|past)\s+(\d+)\s*weeks?\b/))) return {from: add(today, -(Number(m[1]) * 7 - 1)), to: add(today, 1), label: 'the last ' + m[1] + ' weeks'};
+  if (/\blast week\b/.test(t)) return {from: add(monday, -7), to: monday, label: 'last week (Mon–Sun)'};
+  if (/\bthis week\b/.test(t)) return {from: monday, to: add(today, 1), label: 'this week'};
+  if (/\bpast week\b/.test(t)) return {from: add(today, -6), to: add(today, 1), label: 'the last 7 days'};
+  if (/\blast month\b/.test(t)) return {from: new Date(y, mo - 1, 1), to: new Date(y, mo, 1), label: 'last month'};
+  if (/\bthis month\b/.test(t)) return {from: new Date(y, mo, 1), to: add(today, 1), label: 'this month'};
+  if (/\bpast month\b/.test(t)) return {from: add(today, -29), to: add(today, 1), label: 'the last 30 days'};
+  return null;
+}
+function rangeOr(t, days){
+  const r = parseRange(t); if (r) return r;
+  const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return {from: new Date(today.getFullYear(), today.getMonth(), today.getDate() - (days - 1)), to: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1), label: 'the last ' + days + ' days'};
+}
+const inRange = (ts, r) => { const d = new Date(ts); return d >= r.from && d < r.to; };
+
+// Transaction types are grouped by keyword so this works whatever exact names the database uses.
+function txKind(t){
+  t = String(t || '').toLowerCase();
+  if (t === 'reversal') return 'reversal';
+  if (/sale|sold|toast/.test(t)) return 'sale';
+  if (/deliver|receiv|purchas|invoice/.test(t)) return 'delivery';
+  if (/waste/.test(t)) return 'waste';
+  if (/prep|batch|produc/.test(t)) return 'prep';
+  if (/count|adjust|opening/.test(t)) return 'count';
+  return 'other';
+}
+async function fetchTx(r, ids){
+  let all = [];
+  for (let page = 0; page < 20; page++) {
+    let qy = sb.from('stock_transaction').select('item_id,quantity_change,transaction_type,transaction_at,source_file,notes')
+      .gte('transaction_at', r.from.toISOString()).lt('transaction_at', r.to.toISOString()).order('transaction_id');
+    if (ids && ids.length) qy = qy.in('item_id', ids);
+    const rows = await q(qy.range(page * 1000, page * 1000 + 999));
+    all = all.concat(rows); if (rows.length < 1000) break;
+  }
+  // A reversal row ('reversal:<name>') undoes an earlier import: count it under that import's type.
+  const orig = Array.from(new Set(all.filter(t => t.transaction_type === 'reversal' && t.source_file).map(t => t.source_file.slice(9))));
+  if (orig.length) {
+    const kinds = {};
+    for (let i = 0; i < orig.length; i += 100) {
+      const rows = await q(sb.from('stock_transaction').select('source_file,transaction_type').in('source_file', orig.slice(i, i + 100)).neq('transaction_type', 'reversal').limit(1000));
+      rows.forEach(r => kinds[r.source_file] = r.transaction_type);
+    }
+    all.forEach(t => { if (t.transaction_type === 'reversal' && t.source_file) t.kind = txKind(kinds[t.source_file.slice(9)]); });
+  }
+  all.forEach(t => { if (!t.kind) t.kind = txKind(t.transaction_type); });
+  return all;
+}
+async function loadSkus(){ skuRows = await q(sb.from('supplier_sku').select('*').order('supplier_sku_code')); return skuRows; }
+
+/* ---------- pack-size parsing for SKU suggestions ---------- */
+const PACK_UNITS = {
+  'OZ':{d:'w', f:1}, 'LB':{d:'w', f:16}, 'LBS':{d:'w', f:16}, '#':{d:'w', f:16}, 'G':{d:'w', f:0.035274}, 'GR':{d:'w', f:0.035274}, 'KG':{d:'w', f:35.274},
+  'FLOZ':{d:'v', f:1}, 'GAL':{d:'v', f:128}, 'GA':{d:'v', f:128}, 'QT':{d:'v', f:32}, 'PT':{d:'v', f:16}, 'L':{d:'v', f:33.814}, 'LT':{d:'v', f:33.814}, 'LTR':{d:'v', f:33.814}, 'ML':{d:'v', f:0.033814},
+  'CT':{d:'c', f:1}, 'EA':{d:'c', f:1}, 'PC':{d:'c', f:1}, 'PCS':{d:'c', f:1}, 'DZ':{d:'c', f:12}, 'DOZ':{d:'c', f:12}
+};
+const UOM_RE = '(FL\\s*OZ|OZ|LBS|LB|#|GAL|GA|QT|PT|LTR|LT|ML|KG|GR|G|L|CT|EA|PCS|PC|DOZ|DZ)(?![A-Z])';
+function parsePack(desc){
+  const s = String(desc || '').toUpperCase();
+  const cw = /\b(CW|CATCH|AVG|AVERAGE|RANDOM|RW|PER LB|LBA)\b/.test(s);
+  let m = s.match(/(\d+(?:\.\d+)?)\s*\/\s*#\s*10\b/);
+  if (m) return {count: Number(m[1]), size: 1, uom: '#10', d: 'container', cw: false, text: m[0]};
+  m = s.match(new RegExp('(\\d+)\\s*\\/\\s*(\\d+)\\s*\\/\\s*(\\d+(?:\\.\\d+)?)\\s*' + UOM_RE));
+  if (m) m = [m[0], String(Number(m[1]) * Number(m[2])), m[3], m[4]];
+  if (!m) m = s.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*[\\/X]\\s*(\\d+(?:\\.\\d+)?)\\s*' + UOM_RE));
+  if (!m) { const m2 = s.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*' + UOM_RE)); if (m2) m = [m2[0], '1', m2[1], m2[2]]; }
+  if (!m) return cw ? {cw: true, text: ''} : null;
+  const uom = m[3].replace(/\s+/g, ''), u = PACK_UNITS[uom];
+  return {count: Number(m[1]), size: Number(m[2]), uom: uom, d: u.d, f: u.f, cw: cw, text: m[0].trim()};
+}
+const ITEM_UNITS = {
+  oz:{d:'w', f:1}, ounce:{d:'w', f:1}, ounces:{d:'w', f:1}, lb:{d:'w', f:16}, lbs:{d:'w', f:16}, pound:{d:'w', f:16}, pounds:{d:'w', f:16},
+  g:{d:'w', f:0.035274}, gram:{d:'w', f:0.035274}, grams:{d:'w', f:0.035274}, kg:{d:'w', f:35.274},
+  floz:{d:'v', f:1}, 'fl oz':{d:'v', f:1}, gal:{d:'v', f:128}, gallon:{d:'v', f:128}, qt:{d:'v', f:32}, quart:{d:'v', f:32}, pt:{d:'v', f:16}, pint:{d:'v', f:16},
+  cup:{d:'v', f:8}, cups:{d:'v', f:8}, tbs:{d:'v', f:0.5}, tbsp:{d:'v', f:0.5}, tsp:{d:'v', f:1/6}, l:{d:'v', f:33.814}, liter:{d:'v', f:33.814}, ml:{d:'v', f:0.033814},
+  each:{d:'c', f:1}, ea:{d:'c', f:1}, ct:{d:'c', f:1}, piece:{d:'c', f:1}, pieces:{d:'c', f:1}, pc:{d:'c', f:1}, egg:{d:'c', f:1}, eggs:{d:'c', f:1}, dozen:{d:'c', f:12}, slice:{d:'c', f:1}, slices:{d:'c', f:1}, strip:{d:'c', f:1}, strips:{d:'c', f:1}, roll:{d:'c', f:1}, rolls:{d:'c', f:1},
+  case:{d:'case', f:1}, cs:{d:'case', f:1}
+};
+const CONTAINERS = /^(can|cans|bag|bags|bottle|bottles|jar|jars|box|boxes|pack|packs|pkg|sleeve|sleeves|loaf|loaves|tub|tubs|carton|cartons|jug|jugs|block|blocks|log|logs)$/;
+const r2 = n => Math.round(n * 100) / 100;
+// Work out "item units per pack" for a SKU and an item. Returns {units, why, sure}.
+function convertPack(desc, unitName){
+  const p = parsePack(desc), un = String(unitName || '').trim().toLowerCase(), iu = ITEM_UNITS[un];
+  if (!p) return {units: null, why: 'No pack size found in "' + (desc || '') + '". Enter the conversion by hand.', sure: false};
+  if (p.cw) {
+    if (iu && iu.d === 'w') return {units: r2(16 / iu.f), why: 'Catch-weight (priced per lb): ' + r2(16 / iu.f) + ' ' + un + ' per pound. Import shipped pounds on delivery.', sure: true};
+    return {units: null, why: 'Catch-weight item, but the item is counted in "' + un + '", not weight. Enter how many ' + un + ' are in one pound.', sure: false};
+  }
+  if (p.d === 'container') {
+    if (CONTAINERS.test(un) || /^(each|ea|ct)$/.test(un)) return {units: p.count, why: p.text + ' = ' + p.count + ' cans per case.', sure: true};
+    return {units: null, why: p.text + ' is ' + p.count + ' #10 cans, but the item is counted in "' + un + '". Enter how many ' + un + ' are in a case.', sure: false};
+  }
+  if (iu && iu.d === 'case') return {units: 1, why: 'Item is counted by the case, so 1 per pack.', sure: true};
+  if (iu && (iu.d === p.d || (un.match(/^(oz|ounce|ounces)$/) && p.d === 'v'))) {
+    const f = (iu.d !== p.d) ? 1 : iu.f;  // "oz" item with a liquid pack: treat as fluid ounces
+    const total = r2(p.count * p.size * p.f / f);
+    const how = (p.count > 1 ? p.count + ' × ' + p.size + ' ' + p.uom : p.size + ' ' + p.uom) + ' = ' + total + ' ' + un;
+    return {units: total, why: how + (iu.d !== p.d ? ' (assuming fluid ounces).' : '.'), sure: iu.d === p.d};
+  }
+  if (iu && iu.d === 'c' && (p.d === 'w' || p.d === 'v')) {
+    const D = String(desc || '').toUpperCase().replace(p.text, ' ');
+    const ct = D.match(/\b(\d+)\s*CT\b/);
+    if (ct) return {units: p.count * Number(ct[1]), why: p.count + ' packs × ' + ct[1] + ' count = ' + (p.count * Number(ct[1])) + ' ' + un + '.', sure: true};
+    const pw = D.match(/(?:^|[^\d.])(\d*\.?\d+)\s*(?:Z|OZ)\b/);
+    if (pw && p.d === 'w' && Number(pw[1]) > 0) {
+      const tot = p.count * p.size * p.f, n = r2(tot / Number(pw[1]));
+      return {units: n, why: (p.count > 1 ? p.count + ' × ' + p.size + ' ' + p.uom : p.size + ' ' + p.uom) + ' = ' + r2(tot) + ' oz ÷ ' + Number(pw[1]) + ' oz per ' + un + ' = ' + n + '.', sure: true};
+    }
+    const sl = D.match(/\b(\d+)\s*(?:SLCD|SLC|SLICES?|SL)\b/);
+    if (sl && /^slices?$/.test(un)) return {units: p.count * Number(sl[1]), why: p.count + ' packs × ' + sl[1] + ' slices = ' + (p.count * Number(sl[1])) + ' slices.', sure: true};
+    const rg = D.match(/\b(\d+)\s*-\s*(\d+)\b/);
+    if (rg && p.uom.indexOf('LB') === 0 && /^(strips?|slices?)$/.test(un)) {
+      const per = (Number(rg[1]) + Number(rg[2])) / 2, lbs = p.count * p.size;
+      return {units: Math.round(per * lbs), why: rg[0] + ' ' + un + ' per lb (avg ' + per + ') × ' + lbs + ' lb ≈ ' + Math.round(per * lbs) + '. Check against a real case.', sure: false};
+    }
+    if (p.count > 1) return {units: p.count, why: p.text + ': assuming each ' + un + ' is one of the ' + p.count + ' pieces, so ' + p.count + ' per case. Check this.', sure: false};
+  }
+  if (CONTAINERS.test(un) || ((un === 'each' || un === 'ea') && p.count > 1)) {
+    return {units: p.count, why: p.text + ': assuming 1 ' + un + ' = one inner pack, so ' + p.count + ' per case. Check this.', sure: false};
+  }
+  return {units: null, why: p.text + ' is measured in ' + p.uom + ' but the item is counted in "' + un + '". Enter how many ' + un + ' are in one pack.', sure: false};
+}
+function skuText(r){ return [r.description, r.product_description, r.item_description, r.brand, r.pack_description].filter(Boolean).join(' '); }
+// US Foods names products "Noun, details". The item's main word (its last word, e.g. "Sourdough" in
+// "Annie's Bakery Sourdough") must appear, and the item must also touch the product noun.
+const GENERIC_HEAD = /^(cheese|bread|ham|salad|mix|meat|drink|soda|juice|herb|herbs)$/;
+function suggestItems(r){
+  const desc = skuText(r).replace(/^\s*per\s+lb\s*:\s*/i, '').replace(/\([^)]*\)/g, ' ');
+  const segs = desc.split(',');
+  const head = toks(segs[0]);
+  const second = segs.length > 1 && head.some(t => GENERIC_HEAD.test(t)) ? toks(segs[1]).filter(t => !/\d/.test(t)).slice(0, 1) : [];
+  const all = toks(desc).filter(t => !/\d/.test(t));
+  if (!all.length) return [];
+  const sym = (a, b) => Math.max(tokScore(a, b), tokScore(b, a));
+  const best = (t, list) => list.reduce((m, x) => Math.max(m, sym(t, x)), 0);
+  return items.filter(i => i.is_active).map(i => {
+    const nt = toks(String(i.item_name).replace(/\([^)]*\)/g, ' ')).filter(t => t.length > 1);
+    if (!nt.length) return {i, s: 0};
+    const hItem = best(nt[nt.length - 1], all), cov = nt.reduce((m, t) => m + best(t, all), 0) / nt.length;
+    const hHead = nt.some(t => best(t, head) >= .85) ? .2 : 0, hSecond = nt.some(t => best(t, second) >= .85) ? .25 : 0;
+    const ok = hItem >= .85 && (hHead || hSecond);
+    return {i, s: ok ? hItem * .5 + cov * .3 + Math.max(hHead, hSecond) : 0};
+  }).filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 3).map(x => x.i);
+}
+function skuCard(r){
+  const sug = suggestItems(r), pick = r.item_id ? itemById[r.item_id] : sug[0];
+  const conv = pick ? convertPack(skuText(r), pick.unit_of_measure) : {units: null, why: 'No item name in the description to match on. Pick the item below.', sure: false};
+  const units = r.item_id && r.units_per_pack != null ? r.units_per_pack : conv.units;
+  const sugIds = new Set(sug.map(i => i.item_id));
+  const opt = i => '<option value="' + i.item_id + '"' + (pick && pick.item_id === i.item_id ? ' selected' : '') + '>' + esc(i.item_name) + ' (' + esc(i.unit_of_measure) + ')</option>';
+  return '<div class="bot-card" data-sku="' + esc(r.supplier_sku_code) + '">' +
+    '<div><b class="mono">' + esc(r.supplier_sku_code) + '</b> <span class="muted">' + esc(r.pack_description || '') + '</span>' + (r.last_unit_cost != null ? ' <span class="muted">· ' + money(r.last_unit_cost) + '</span>' : '') + '</div>' +
+    '<div class="field"><label>Item</label><select data-f="item"><option value="">(choose item)</option>' +
+      (sug.length ? '<optgroup label="Suggested">' + sug.map(opt).join('') + '</optgroup><optgroup label="All items">' : '') +
+      items.filter(i => !sugIds.has(i.item_id)).map(opt).join('') + (sug.length ? '</optgroup>' : '') + '</select></div>' +
+    '<div class="field"><label>Item units per pack</label><input data-f="units" type="number" step="0.01" min="0" value="' + (units == null ? '' : units) + '"></div>' +
+    '<div class="bot-why' + (conv.sure ? '' : ' check') + '">' + esc(conv.why) + '</div>' +
+    '<div class="toolbar" style="margin:8px 0 0"><button class="btn sm" data-apply="1">Apply match</button></div></div>';
+}
+
+/* ---------- answers ---------- */
+const chips = list => '<div class="bot-chips">' + list.map(c => '<button class="bot-chip" data-ask="' + esc(c) + '">' + esc(c) + '</button>').join('') + '</div>';
+const P = s => '<p>' + s + '</p>';
+const unitOf = id => esc((itemById[id] || {}).unit_of_measure || '');
+const nameOf = id => esc((itemById[id] || {}).item_name || ('item ' + id));
+
+function ansHelp(){
+  return P('I answer from your Pantry data. Try:') +
+    '<ul style="margin:4px 0 6px;padding-left:18px">' +
+    '<li><b>Stock:</b> "how much mozzarella", "tomatoes on hand"</li>' +
+    '<li><b>Low / reorder:</b> "what\'s low", "what should I order"</li>' +
+    '<li><b>Usage:</b> "chicken used last week", "top usage this month"</li>' +
+    '<li><b>Waste:</b> "waste this week", "basil waste last 30 days"</li>' +
+    '<li><b>Shrinkage:</b> "shrinkage this month"</li>' +
+    '<li><b>Deliveries:</b> "what came in yesterday", "cheddar received this month"</li>' +
+    '<li><b>SKUs:</b> "unmatched skus", "sku 1234567", "check sku conversions"</li></ul>' +
+    P('<span class="muted">Dates I understand: today, yesterday, this/last week, this/last month, last N days.</span>');
+}
+
+async function ansStock(text, found){
+  await loadRefs();
+  const list = (found || findItems(text)).map(i => itemById[i.item_id] || i);
+  if (!list.length) return P('I couldn\'t find an item matching "' + esc(itemWords(text).join(' ')) + '".') + chips(['What\'s low?', 'Help']);
+  BOT.lastItems = list;
+  return table(['Item', {t:'On hand', n:1}, {t:'Par', n:1}, 'Status'], list.map(i => '<tr><td>' + esc(i.item_name) + '</td><td class="tn">' + fmt(i.quantity_on_hand) + ' ' + esc(i.unit_of_measure) + '</td><td class="tn">' + fmt(i.par_level) + '</td><td>' + status(i) + '</td></tr>')) +
+    chips(list.length === 1 ? [list[0].item_name + ' used last week', list[0].item_name + ' waste this month'] : []);
+}
+
+async function ansLow(){
+  await loadRefs();
+  const low = items.filter(i => i.is_active && i.par_level != null && Number(i.quantity_on_hand) <= Number(i.par_level))
+    .sort((a, b) => (Number(a.quantity_on_hand) - Number(a.par_level)) - (Number(b.quantity_on_hand) - Number(b.par_level)));
+  const noPar = items.filter(i => i.is_active && i.par_level == null).length;
+  if (!low.length) return P('Nothing is at or below par.' + (noPar ? ' Note: ' + noPar + ' active item(s) have no par level set, so they can never show as low.' : ''));
+  return P(low.length + ' item(s) at or below par:') +
+    table(['Item', {t:'On hand', n:1}, {t:'Par', n:1}], low.slice(0, 25).map(i => '<tr><td>' + esc(i.item_name) + '</td><td class="tn">' + fmt(i.quantity_on_hand) + ' ' + esc(i.unit_of_measure) + '</td><td class="tn">' + fmt(i.par_level) + '</td></tr>')) +
+    (low.length > 25 ? P('<span class="muted">and ' + (low.length - 25) + ' more (see Inventory, "low only").</span>') : '') +
+    (noPar ? P('<span class="muted">' + noPar + ' active item(s) have no par level, so they are not checked.</span>') : '') + chips(['What should I order?']);
+}
+
+async function ansNegative(){
+  const neg = await q(sb.from('v_negative_stock').select('*').order('item_name'));
+  if (!neg.length) return P('No items are below zero.');
+  return P(neg.length + ' item(s) are below zero. A count fixes the number; check for unmatched SKUs or missing deliveries.') +
+    table(['Item', {t:'Quantity', n:1}], neg.map(r => '<tr><td>' + esc(r.item_name) + '</td><td class="tn">' + fmt(r.quantity_on_hand) + ' ' + esc(r.unit_of_measure || '') + '</td></tr>')) + chips(['Unmatched SKUs']);
+}
+
+async function ansReorder(){
+  const rows = await q(sb.from('v_reorder_suggestions').select('*').order('item_name'));
+  if (!rows.length) return P('Nothing needs reordering right now.');
+  const total = rows.reduce((s, r) => s + (Number(r.est_cost) || 0), 0), noSku = rows.filter(r => !r.supplier_sku_code).length;
+  return P(rows.length + ' item(s) to reorder, estimated <b>' + money(total) + '</b>.') +
+    table(['Item', 'SKU', {t:'Packs', n:1}, {t:'Est.', n:1}], rows.slice(0, 25).map(r => '<tr><td>' + esc(r.item_name) + '</td><td class="mono">' + esc(r.supplier_sku_code || '—') + '</td><td class="tn">' + (r.packs_to_order == null ? '—' : r.packs_to_order) + '</td><td class="tn">' + money(r.est_cost) + '</td></tr>')) +
+    (noSku ? P('<span class="muted">' + noSku + ' item(s) have no matched SKU, so no pack or price could be worked out.</span>') + chips(['Unmatched SKUs']) : '');
+}
+
+async function ansUsage(text, found){
+  const r = rangeOr(text, 7), list = found || findItems(text);
+  if (!list.length && /\b(sold|sales?|sell)\b/.test(text)) {
+    const menuHit = findItems(text, menuRecipes.map(m => ({item_id: 'r' + m.recipe_id, item_name: m.recipe_name + ' ' + (m.toast_menu_item || '')})));
+    if (menuHit.length) return P('Menu-item sales counts aren\'t stored: sales imports only record the ingredients they used. I can show ingredient usage instead.') + chips(['Top usage ' + (parseRange(text) ? parseRange(text).label : 'last 7 days').replace(/ \(Mon–Sun\)/, '')]);
+  }
+  const tx = await fetchTx(r, list.map(i => i.item_id));
+  if (list.length) {
+    BOT.lastItems = list;
+    const rows = list.map(i => {
+      const a = {sale: 0, prep: 0, waste: 0, made: 0, recv: 0};
+      tx.filter(t => t.item_id === i.item_id).forEach(t => { const k = t.kind, c = Number(t.quantity_change) || 0;
+        if (k === 'sale') a.sale -= c; else if (k === 'waste') a.waste -= c; else if (k === 'prep') { if (c < 0) a.prep -= c; else a.made += c; } else if (k === 'delivery') a.recv += c; });
+      return {i, a, used: a.sale + a.prep + a.waste};
+    });
+    return P('Usage for ' + esc(r.label) + ':') +
+      table(['Item', {t:'Sales', n:1}, {t:'Prep', n:1}, {t:'Waste', n:1}, {t:'Total used', n:1}, {t:'Received', n:1}],
+        rows.map(x => '<tr><td>' + esc(x.i.item_name) + '</td><td class="tn">' + fmt(x.a.sale) + '</td><td class="tn">' + fmt(x.a.prep) + '</td><td class="tn">' + fmt(x.a.waste) + '</td><td class="tn"><b>' + fmt(x.used) + ' ' + esc(x.i.unit_of_measure) + '</b></td><td class="tn">' + fmt(x.a.recv) + '</td></tr>')) +
+      (rows.some(x => x.a.made) ? P('<span class="muted">Made in prep batches: ' + rows.filter(x => x.a.made).map(x => esc(x.i.item_name) + ' ' + fmt(x.a.made)).join(', ') + '.</span>') : '');
+  }
+  const agg = {};
+  tx.forEach(t => { const k = t.kind, c = Number(t.quantity_change) || 0; if (k === 'sale' || (k === 'prep' && c < 0)) agg[t.item_id] = (agg[t.item_id] || 0) - c; });
+  const top = Object.keys(agg).map(id => ({id: Number(id), q: agg[id]})).filter(x => x.q > 0).sort((a, b) => b.q - a.q).slice(0, 15);
+  if (!top.length) return P('No sales or prep usage recorded for ' + esc(r.label) + '.');
+  return P('Most-used ingredients (sales + prep), ' + esc(r.label) + ':') +
+    table(['Item', {t:'Used', n:1}], top.map(x => '<tr><td>' + nameOf(x.id) + '</td><td class="tn">' + fmt(x.q) + ' ' + unitOf(x.id) + '</td></tr>'));
+}
+
+async function ansWaste(text, found){
+  const r = rangeOr(text, 7), list = found || findItems(text);
+  let rows = await q(sb.from('v_waste_log').select('*').gte('transaction_at', r.from.toISOString()).lt('transaction_at', r.to.toISOString()).order('transaction_at', {ascending: false}).limit(2000));
+  rows = rows.filter(x => inRange(x.transaction_at, r));
+  if (list.length) { const names = new Set(list.map(i => i.item_name)); rows = rows.filter(x => names.has(x.item_name)); BOT.lastItems = list; }
+  const what = list.length ? list.map(i => esc(i.item_name)).join(', ') : 'anything';
+  if (!rows.length) return P('No waste logged for ' + what + ' in ' + esc(r.label) + '.');
+  const total = rows.reduce((s, x) => s + (Number(x.est_cost) || 0), 0);
+  const by = {}; rows.forEach(x => { const b = by[x.item_name] || (by[x.item_name] = {n: x.item_name, q: 0, c: 0, u: x.unit_of_measure, times: 0}); b.q += Number(x.quantity_wasted) || 0; b.c += Number(x.est_cost) || 0; b.times++; });
+  const reasons = {}; rows.forEach(x => { const k = String(x.reason || 'Other').split(':')[0]; reasons[k] = (reasons[k] || 0) + (Number(x.est_cost) || 0); });
+  const topR = Object.keys(reasons).sort((a, b) => reasons[b] - reasons[a]).slice(0, 3);
+  return P('Waste in ' + esc(r.label) + ': <b>' + rows.length + '</b> entries, about <b>' + money(total) + '</b>.') +
+    table(['Item', {t:'Wasted', n:1}, {t:'Times', n:1}, {t:'Est. cost', n:1}], Object.values(by).sort((a, b) => b.c - a.c || b.q - a.q).slice(0, 15).map(b => '<tr><td>' + esc(b.n) + '</td><td class="tn">' + fmt(b.q) + ' ' + esc(b.u || '') + '</td><td class="tn">' + b.times + '</td><td class="tn">' + money(b.c) + '</td></tr>')) +
+    P('<span class="muted">Top reasons by cost: ' + topR.map(k => esc(k) + ' (' + money(reasons[k]) + ')').join(', ') + '.</span>');
+}
+
+async function ansShrink(text, found){
+  const r = rangeOr(text, 30), list = found || findItems(text);
+  let rows = await q(sb.from('v_count_variance').select('*').gte('transaction_at', r.from.toISOString()).lt('transaction_at', r.to.toISOString()).order('transaction_at', {ascending: false}).limit(2000));
+  rows = rows.filter(x => inRange(x.transaction_at, r));
+  if (list.length) { const names = new Set(list.map(i => i.item_name)); rows = rows.filter(x => names.has(x.item_name)); BOT.lastItems = list; }
+  if (!rows.length) return P('No count variance in ' + esc(r.label) + '. Shrinkage only shows from an item\'s second count onward.');
+  const net = rows.reduce((s, x) => s + (Number(x.variance_cost) || 0), 0);
+  const by = {}; rows.forEach(x => { const b = by[x.item_name] || (by[x.item_name] = {n: x.item_name, v: 0, c: 0, u: x.unit_of_measure}); b.v += Number(x.variance) || 0; b.c += Number(x.variance_cost) || 0; });
+  return P('Count variance in ' + esc(r.label) + ': net <b>' + money(net) + '</b> (negative = less on the shelf than expected).') +
+    table(['Item', {t:'Variance', n:1}, {t:'Value', n:1}], Object.values(by).sort((a, b) => a.c - b.c).slice(0, 15).map(b => '<tr><td>' + esc(b.n) + '</td><td class="tn">' + fmt(b.v) + ' ' + esc(b.u || '') + '</td><td class="tn">' + money(b.c) + '</td></tr>'));
+}
+
+async function ansDelivery(text, found){
+  const r = rangeOr(text, 7), list = found || findItems(text);
+  const tx = (await fetchTx(r, list.map(i => i.item_id))).filter(t => t.kind === 'delivery');
+  if (list.length) BOT.lastItems = list;
+  if (!tx.length) return P('No deliveries recorded' + (list.length ? ' for ' + list.map(i => esc(i.item_name)).join(', ') : '') + ' in ' + esc(r.label) + '.');
+  const by = {}; tx.forEach(t => by[t.item_id] = (by[t.item_id] || 0) + (Number(t.quantity_change) || 0));
+  const files = Array.from(new Set(tx.map(t => t.source_file).filter(f => f && f.indexOf('reversal:') !== 0)));
+  return P('Received in ' + esc(r.label) + ' (' + files.length + ' import' + (files.length === 1 ? '' : 's') + '):') +
+    table(['Item', {t:'Received', n:1}], Object.keys(by).map(id => ({id: Number(id), q: by[id]})).sort((a, b) => b.q - a.q).slice(0, 25).map(x => '<tr><td>' + nameOf(x.id) + '</td><td class="tn">' + fmt(x.q) + ' ' + unitOf(x.id) + '</td></tr>'));
+}
+
+async function ansSku(text){
+  await loadSkus();
+  const raw = String(text).toLowerCase();
+  const code = raw.split(/[^a-z0-9-]+/).find(w => w && skuRows.some(s => s.supplier_sku_code.toLowerCase() === w));
+  if (code) {
+    const r = skuRows.find(s => s.supplier_sku_code.toLowerCase() === code);
+    return P(r.item_id ? 'This SKU is matched to <b>' + nameOf(r.item_id) + '</b> at ' + fmt(r.units_per_pack) + ' ' + unitOf(r.item_id) + ' per pack. You can change it here:' : 'This SKU is not matched yet. My suggestion:') + skuCard(r);
+  }
+  if (/\b(check|audit|verify|wrong|conversions?)\b/.test(raw)) {
+    const bad = skuRows.filter(r => r.item_id && itemById[r.item_id]).map(r => ({r, c: convertPack(skuText(r), itemById[r.item_id].unit_of_measure)}))
+      .filter(x => x.c.units != null && x.c.sure && Math.abs(Number(x.r.units_per_pack) - x.c.units) > Math.max(.01, x.c.units * .02));
+    if (!bad.length) return P('I checked every matched SKU whose pack size I can read. None disagree with the saved conversion.');
+    return P(bad.length + ' matched SKU(s) have a conversion that doesn\'t match their pack size. Review each one:') + bad.slice(0, 5).map(x => skuCard(x.r)).join('') +
+      (bad.length > 5 ? P('<span class="muted">and ' + (bad.length - 5) + ' more.</span>') : '');
+  }
+  const un = skuRows.filter(r => !r.item_id);
+  if (/\b(more|next)\b/.test(raw) && BOT.prev === 'sku') BOT.skuOffset += 5; else BOT.skuOffset = 0;
+  if (!un.length) return P('Every SKU is matched.') + chips(['Check SKU conversions']);
+  if (BOT.skuOffset >= un.length) BOT.skuOffset = 0;
+  const page = un.slice(BOT.skuOffset, BOT.skuOffset + 5);
+  return P(un.length + ' unmatched SKU(s); they move no stock until matched. Showing ' + (BOT.skuOffset + 1) + '–' + (BOT.skuOffset + page.length) + '. Check each suggestion, then click Apply.') +
+    page.map(skuCard).join('') + (BOT.skuOffset + 5 < un.length ? chips(['More unmatched SKUs']) : '');
+}
+
+async function answer(text){
+  const t = String(text).toLowerCase().trim();
+  if (!t) return null;
+  BOT.prev = BOT.last;
+  if (/^(help|\?|hi|hello|hey|what can you do|commands)\b/.test(t)) return ansHelp();
+  if (/\bskus?\b|unmatched|mapping|\bmap\b|\bmatch(ed|ing)?\b/.test(t) || (BOT.last === 'sku' && /^(more|next)\b/.test(t))) return (BOT.last = 'sku', ansSku(t));
+  if (/\b(re)?order\b|\bbuy\b|purchase|shopping/.test(t)) return (BOT.last = 'reorder', ansReorder());
+  if (/negative|below zero/.test(t)) return (BOT.last = 'negative', ansNegative());
+  if (/\blow\b|running out|\bshort\b|below par|under par|\bneed\b/.test(t) && !itemWords(t).length) return (BOT.last = 'low', ansLow());
+  if (/wast|threw|thrown|toss|spoil|trash/.test(t)) return (BOT.last = 'waste', ansWaste(t));
+  if (/shrink|variance|missing|theft|discrepan/.test(t)) return (BOT.last = 'shrink', ansShrink(t));
+  if (/deliver|receiv|came in|shipment|invoice/.test(t)) return (BOT.last = 'delivery', ansDelivery(t));
+  if (/\bused?\b|usage|went through|go through|consum|\bsold\b|\bsales?\b|\bsell\b/.test(t)) return (BOT.last = 'usage', ansUsage(t));
+  if (/how much|how many|on hand|in stock|\bstock\b|\bleft\b|\bhave\b|inventory|\blow\b/.test(t)) return (BOT.last = 'stock', ansStock(t));
+  const found = findItems(t);
+  if (found.length) {
+    // Follow-up like "what about cheddar" keeps the previous question type.
+    const fn = {usage: ansUsage, waste: ansWaste, shrink: ansShrink, delivery: ansDelivery}[BOT.last];
+    if (fn && (parseRange(t) || /^(and|what about|how about)\b/.test(t))) return fn(t, found);
+    return (BOT.last = 'stock', ansStock(t, found));
+  }
+  if (parseRange(t) && BOT.lastItems && {usage:1, waste:1, shrink:1, delivery:1}[BOT.last])
+    return {usage: ansUsage, waste: ansWaste, shrink: ansShrink, delivery: ansDelivery}[BOT.last](t, BOT.lastItems);
+  return P('Sorry, I didn\'t understand that.') + ansHelp();
+}
+
+/* ---------- widget ---------- */
+const BOT_ICON = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+function unmountBot(){ const el = $('#bot'); if (el) el.remove(); BOT.last = null; BOT.lastItems = null; BOT.skuOffset = 0; }
+function mountBot(){
+  if (!has('manager')) return unmountBot();
+  if ($('#bot')) return;
+  const root = document.createElement('div'); root.id = 'bot';
+  root.innerHTML =
+    '<button class="bot-fab" id="botFab" aria-label="Open Pantry assistant" title="Pantry assistant">' + BOT_ICON + '</button>' +
+    '<div class="bot-panel hidden" id="botPanel" role="dialog" aria-label="Pantry assistant">' +
+      '<div class="bot-head"><b>Pantry assistant</b><button id="botClose" aria-label="Close">&times;</button></div>' +
+      '<div class="bot-log" id="botLog" aria-live="polite"></div>' +
+      '<div class="bot-quick">' + chips(['What\'s low?', 'What should I order?', 'Waste this week', 'Top usage last week', 'Shrinkage this month', 'Unmatched SKUs', 'Check SKU conversions']) + '</div>' +
+      '<div class="bot-in"><input id="botInput" placeholder="Ask about stock, waste, SKUs..." autocomplete="off"><button class="btn" id="botSend">Ask</button></div>' +
+    '</div>';
+  document.body.appendChild(root);
+  const panel = $('#botPanel'), log = $('#botLog'), input = $('#botInput');
+  const add = (html, who) => { const d = document.createElement('div'); d.className = 'bot-msg ' + who; d.innerHTML = html; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; };
+  const send = async txt => {
+    txt = String(txt || '').trim(); if (!txt || BOT.busy) return;
+    BOT.busy = true; add(esc(txt), 'me'); input.value = '';
+    const wait = add('<span class="muted">Looking that up...</span>', 'it');
+    try { wait.innerHTML = (await answer(txt)) || ''; }
+    catch (e) { wait.innerHTML = '<div class="note bad" style="margin:0">' + esc(errText(e)) + '</div>'; }
+    BOT.busy = false; log.scrollTop = log.scrollHeight; input.focus();
+  };
+  $('#botFab').onclick = () => { panel.classList.toggle('hidden'); if (!panel.classList.contains('hidden')) { if (!log.children.length) add(P('Hi ' + esc((me.full_name || '').split(' ')[0] || 'there') + '. Ask me about stock, usage, waste, deliveries or SKU matching.') + chips(['Help']), 'it'); input.focus(); } };
+  $('#botClose').onclick = () => panel.classList.add('hidden');
+  $('#botSend').onclick = () => send(input.value);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') send(input.value); });
+  panel.addEventListener('click', async e => {
+    const chip = e.target.closest('[data-ask]'); if (chip) return send(chip.dataset.ask);
+    const ap = e.target.closest('[data-apply]'); if (!ap) return;
+    const card = ap.closest('.bot-card'), code = card.dataset.sku;
+    const item = Number(card.querySelector('[data-f="item"]').value), units = num(card.querySelector('[data-f="units"]').value);
+    if (!item || !units || units <= 0) return toast('Choose an item and enter a conversion above zero.', true);
+    const row = skuRows.find(s => s.supplier_sku_code === code) || {};
+    if (!confirm('Match ' + code + ' to ' + itemById[item].item_name + ' at ' + units + ' ' + itemById[item].unit_of_measure + ' per pack?')) return;
+    ap.disabled = true;
+    try {
+      await q(sb.rpc('confirm_sku', {p_sku_code: code, p_item_id: item, p_units_per_pack: units, p_last_unit_cost: row.last_unit_cost == null ? null : Number(row.last_unit_cost)}));
+      await loadSkus();
+      card.innerHTML = '<span class="pill ok">matched</span> <b class="mono">' + esc(code) + '</b> → ' + esc(itemById[item].item_name) + ', ' + fmt(units) + ' ' + esc(itemById[item].unit_of_measure) + ' per pack.' +
+        '<div class="bot-why">Earlier deliveries of this SKU added no stock. Re-import them under a new name if needed.</div>';
+      toast('Matched ' + code + '.');
+      if (currentTab === 'skus' || currentTab === 'dashboard') renderShell();
+    } catch (err) { toast(errText(err), true); ap.disabled = false; }
+  });
+  panel.addEventListener('change', e => {
+    const sel = e.target.closest('[data-f="item"]'); if (!sel) return;
+    const card = sel.closest('.bot-card'), row = skuRows.find(s => s.supplier_sku_code === card.dataset.sku), it = itemById[Number(sel.value)];
+    const why = card.querySelector('.bot-why'), inp = card.querySelector('[data-f="units"]');
+    if (!it || !row) { why.textContent = 'Pick an item.'; return; }
+    const c = convertPack(skuText(row), it.unit_of_measure);
+    inp.value = c.units == null ? '' : c.units; why.textContent = c.why; why.className = 'bot-why' + (c.sure ? '' : ' check');
   });
 }
 
