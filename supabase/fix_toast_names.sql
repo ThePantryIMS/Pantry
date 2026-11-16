@@ -9,8 +9,10 @@ update public.recipe set toast_menu_item = 'Ham & Brie Press'   where recipe_nam
 update public.recipe set toast_menu_item = 'Pesto GRCHZ'        where recipe_name = 'Pesto Grilled Cheese'       and recipe_type = 'menu';
 update public.recipe set toast_menu_item = 'Chimmi GRCHZ'       where recipe_name = 'Chimmi Grilled Cheese'      and recipe_type = 'menu';
 update public.recipe set toast_menu_item = 'Granny Smith GRCHZ' where recipe_name = 'Granny Smith Grilled Cheese' and recipe_type = 'menu';
+-- Assumption (owner's guess): plain "Grill Chz" in Toast is the Children's Grilled Cheese.
+update public.recipe set toast_menu_item = 'Grill Chz'          where recipe_name = 'Children''s Grilled Cheese' and recipe_type = 'menu';
 
--- Check: should list all six with their new Toast names.
+-- Check: should list all seven with their new Toast names.
 select recipe_name, toast_menu_item
   from public.recipe
  where recipe_type = 'menu'
